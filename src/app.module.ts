@@ -7,23 +7,29 @@ import { AprSample } from './entities/apr-sample.entity';
 import { AprCalculationService } from './services/apr-calculation.service';
 import { BlockchainService } from './services/blockchain.service';
 import { CoinGeckoService } from './services/coingecko.service';
+import { EcService } from './services/ec.service';
 import { getDatabaseConfig } from './config/database.config';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '.env',
+      envFilePath: '.env'
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: getDatabaseConfig,
-      inject: [ConfigService],
+      inject: [ConfigService]
     }),
     TypeOrmModule.forFeature([AprSample]),
-    ScheduleModule.forRoot(),
+    ScheduleModule.forRoot()
   ],
   controllers: [AprController],
-  providers: [AprCalculationService, BlockchainService, CoinGeckoService],
+  providers: [
+    AprCalculationService,
+    BlockchainService,
+    CoinGeckoService,
+    EcService
+  ]
 })
 export class AppModule {}

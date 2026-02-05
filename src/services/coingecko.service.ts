@@ -7,6 +7,15 @@ export interface TokenPrices {
   ssvPrice: number;
 }
 
+interface CoinGeckoSimplePriceResponse {
+  ethereum?: {
+    usd?: number;
+  };
+  'ssv-network'?: {
+    usd?: number;
+  };
+}
+
 @Injectable()
 export class CoinGeckoService {
   private readonly logger = new Logger(CoinGeckoService.name);
@@ -19,7 +28,7 @@ export class CoinGeckoService {
       'https://api.coingecko.com/api/v3';
     this.axiosInstance = axios.create({
       baseURL: this.baseUrl,
-      timeout: 30000,
+      timeout: 30000
     });
   }
 
@@ -37,17 +46,21 @@ export class CoinGeckoService {
     try {
       this.logger.log('Fetching spot prices from CoinGecko');
 
-      const response = await this.axiosInstance.get('/simple/price', {
-        params: {
-          ids: 'ethereum,ssv-network',
-          vs_currencies: 'usd',
-        },
-      });
+      const response =
+        await this.axiosInstance.get<CoinGeckoSimplePriceResponse>(
+          '/simple/price',
+          {
+            params: {
+              ids: 'ethereum,ssv-network',
+              vs_currencies: 'usd'
+            }
+          }
+        );
 
       const ethPrice = response.data.ethereum?.usd;
       const ssvPrice = response.data['ssv-network']?.usd;
 
-      if (!ethPrice || !ssvPrice) {
+      if (typeof ethPrice !== 'number' || typeof ssvPrice !== 'number') {
         throw new Error('Missing price data from CoinGecko');
       }
 
@@ -55,9 +68,9 @@ export class CoinGeckoService {
 
       return { ethPrice, ssvPrice };
     } catch (error) {
-      this.logger.error('Failed to fetch spot prices', error.message);
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error('Failed to fetch spot prices', message);
       throw error;
     }
   }
-
 }

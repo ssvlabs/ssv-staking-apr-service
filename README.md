@@ -58,6 +58,9 @@ STAKING_CONTRACT_ADDRESS=0x...  # SSV staking contract address
 # CoinGecko
 COINGECKO_API_URL=https://api.coingecko.com/api/v3
 
+# Explorer Center (Hoodi)
+EXPLORER_CENTER_HOODI=
+
 # Cron Schedule (every 24 hours at midnight UTC)
 APR_CALCULATION_CRON=0 0 * * *
 
@@ -235,6 +238,10 @@ GET /api/apr/health
 - **Contract**: SSV Staking Contract
 - **Method**: `accEthPerShare()`
 - **Network**: Ethereum Mainnet
+
+### Explorer Center (Hoodi)
+- **Validators Effective Balance**: `GET /validators/effective-balance`
+- **Clusters Effective Balance**: `GET /clusters/effective-balance`
 
 ### CoinGecko
 - **Endpoint**: `/coins/{id}/market_chart`

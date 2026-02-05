@@ -10,15 +10,15 @@ async function bootstrap() {
   // Enable CORS
   app.enableCors({
     origin: process.env.CORS_ORIGIN || '*',
-    credentials: true,
+    credentials: true
   });
 
   // Enable validation
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
-      transform: true,
-    }),
+      transform: true
+    })
   );
 
   // Set global prefix
@@ -41,4 +41,4 @@ async function bootstrap() {
   logger.log(`Swagger UI available at: http://localhost:${port}/api/docs`);
   logger.log(`Health check: http://localhost:${port}/api/apr/health`);
 }
-bootstrap();
+void bootstrap();
