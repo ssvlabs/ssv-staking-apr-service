@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { AprSample } from '../entities/apr-sample.entity';
 
 export const getDatabaseConfig = (
-  configService: ConfigService,
+  configService: ConfigService
 ): TypeOrmModuleOptions => ({
   type: 'postgres',
   host: configService.get<string>('DATABASE_HOST'),
@@ -13,5 +13,5 @@ export const getDatabaseConfig = (
   database: configService.get<string>('DATABASE_NAME'),
   entities: [AprSample],
   synchronize: configService.get<string>('NODE_ENV') === 'development',
-  logging: configService.get<string>('NODE_ENV') === 'development',
+  logging: configService.get<string>('NODE_ENV') === 'development'
 });

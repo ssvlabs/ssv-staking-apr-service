@@ -25,7 +25,7 @@ export class BlockchainService implements OnModuleInit {
 
       if (!this.rpcUrl || this.rpcUrl.includes('YOUR_')) {
         this.logger.warn(
-          'RPC_URL not configured properly. Blockchain features will be disabled.',
+          'RPC_URL not configured properly. Blockchain features will be disabled.'
         );
         return;
       }
@@ -35,23 +35,23 @@ export class BlockchainService implements OnModuleInit {
       // Test connection
       const network = await this.provider.getNetwork();
       this.logger.log(
-        `Connected to network: ${network.name} (${network.chainId})`,
+        `Connected to network: ${network.name} (${network.chainId})`
       );
 
       // Initialize Views contract
       this.viewsContract = new ethers.Contract(
         this.viewsContractAddress,
         VIEWS_CONTRACT_ABI,
-        this.provider,
+        this.provider
       );
 
       this.logger.log(
-        `Views contract initialized at ${this.viewsContractAddress}`,
+        `Views contract initialized at ${this.viewsContractAddress}`
       );
     } catch (error) {
       this.logger.error(
         'Failed to initialize blockchain connection. Blockchain features will be disabled.',
-        error instanceof Error ? error.message : String(error),
+        error instanceof Error ? error.message : String(error)
       );
       // Don't throw - allow app to start without blockchain connection
     }
@@ -75,7 +75,7 @@ export class BlockchainService implements OnModuleInit {
     } catch (error) {
       this.logger.error(
         'Failed to read accEthPerShare',
-        error instanceof Error ? error.message : String(error),
+        error instanceof Error ? error.message : String(error)
       );
       throw error;
     }

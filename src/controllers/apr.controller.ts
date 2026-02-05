@@ -6,7 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   ParseIntPipe,
-  BadRequestException,
+  BadRequestException
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { AprCalculationService } from '../services/apr-calculation.service';
@@ -23,7 +23,7 @@ export class AprController {
   @Get('current')
   @ApiOperation({
     summary: 'Get current APR',
-    description: 'Returns the most recent APR calculation for SSV Network',
+    description: 'Returns the most recent APR calculation for SSV Network'
   })
   @ApiResponse({
     status: 200,
@@ -31,9 +31,10 @@ export class AprController {
     schema: {
       example: {
         currentApr: 5.67,
-        timestamp: '2025-01-15T12:00:00Z',
-      },
-    },
+        aprProjected: 6.12,
+        timestamp: '2025-01-15T12:00:00Z'
+      }
+    }
   })
   async getCurrentApr() {
     const apr = await this.aprCalculationService.getCurrentApr();
@@ -41,8 +42,9 @@ export class AprController {
     if (!apr) {
       return {
         currentApr: null,
+        aprProjected: null,
         message:
-          'No APR data available yet. Please wait for the first sample collection.',
+          'No APR data available yet. Please wait for the first sample collection.'
       };
     }
 
@@ -56,7 +58,7 @@ export class AprController {
   @Get('latest')
   @ApiOperation({
     summary: 'Get latest samples',
-    description: 'Returns the two most recent APR samples',
+    description: 'Returns the two most recent APR samples'
   })
   @ApiResponse({
     status: 200,
@@ -67,16 +69,17 @@ export class AprController {
           {
             id: 1,
             apr: 5.67,
+            aprProjected: 6.12,
             timestamp: '2025-01-15T12:00:00Z',
             ssvPrice: 50.0,
             ethPrice: 2000.0,
             totalSupply: '1000000',
-            networkFee: '0.01',
-          },
+            networkFee: '0.01'
+          }
         ],
-        count: 2,
-      },
-    },
+        count: 2
+      }
+    }
   })
   async getLatestSamples() {
     const samples = await this.aprCalculationService.getLatestTwoSamples();
@@ -84,13 +87,13 @@ export class AprController {
     if (samples.length === 0) {
       return {
         samples: [],
-        message: 'No samples available yet.',
+        message: 'No samples available yet.'
       };
     }
 
     return {
       samples,
-      count: samples.length,
+      count: samples.length
     };
   }
 
@@ -103,38 +106,38 @@ export class AprController {
   @ApiOperation({
     summary: 'Get historical APR data',
     description:
-      'Returns historical APR samples with optional filtering by date range and limit',
+      'Returns historical APR samples with optional filtering by date range and limit'
   })
   @ApiQuery({
     name: 'limit',
     required: false,
     type: Number,
-    description: 'Maximum number of samples to return (default: 30)',
+    description: 'Maximum number of samples to return (default: 30)'
   })
   @ApiQuery({
     name: 'startDate',
     required: false,
     type: String,
-    description: 'Start date for filtering (ISO 8601 format)',
+    description: 'Start date for filtering (ISO 8601 format)'
   })
   @ApiQuery({
     name: 'endDate',
     required: false,
     type: String,
-    description: 'End date for filtering (ISO 8601 format)',
+    description: 'End date for filtering (ISO 8601 format)'
   })
   @ApiResponse({
     status: 200,
-    description: 'Successfully retrieved historical data',
+    description: 'Successfully retrieved historical data'
   })
   @ApiResponse({
     status: 400,
-    description: 'Invalid date format',
+    description: 'Invalid date format'
   })
   async getHistory(
     @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
     @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
+    @Query('endDate') endDate?: string
   ) {
     const parsedStartDate = startDate ? new Date(startDate) : undefined;
     const parsedEndDate = endDate ? new Date(endDate) : undefined;
@@ -150,12 +153,12 @@ export class AprController {
     const samples = await this.aprCalculationService.getHistoricalSamples(
       limit || 30,
       parsedStartDate,
-      parsedEndDate,
+      parsedEndDate
     );
 
     return {
       samples,
-      count: samples.length,
+      count: samples.length
     };
   }
 
@@ -168,7 +171,7 @@ export class AprController {
   @ApiOperation({
     summary: 'Manually collect APR sample',
     description:
-      'Triggers manual collection of APR data (for testing/admin purposes)',
+      'Triggers manual collection of APR data (for testing/admin purposes)'
   })
   @ApiResponse({
     status: 201,
@@ -179,19 +182,20 @@ export class AprController {
         sample: {
           id: 1,
           apr: 5.67,
+          aprProjected: 6.12,
           timestamp: '2025-01-15T12:00:00Z',
           ssvPrice: 50.0,
-          ethPrice: 2000.0,
-        },
-      },
-    },
+          ethPrice: 2000.0
+        }
+      }
+    }
   })
   async collectSample() {
     const sample = await this.aprCalculationService.manualCollectSample();
 
     return {
       message: 'APR sample collected successfully',
-      sample,
+      sample
     };
   }
 
@@ -202,20 +206,20 @@ export class AprController {
   @Get('health')
   @ApiOperation({
     summary: 'Health check',
-    description: 'Check if the service is running',
+    description: 'Check if the service is running'
   })
   @ApiResponse({
     status: 200,
     description: 'Service is healthy',
     schema: {
       example: {
-        status: 'ok',
-      },
-    },
+        status: 'ok'
+      }
+    }
   })
   healthCheck() {
     return {
-      status: 'ok',
+      status: 'ok'
     };
   }
 }

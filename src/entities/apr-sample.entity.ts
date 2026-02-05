@@ -3,7 +3,7 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
-  Index,
+  Index
 } from 'typeorm';
 
 @Entity('apr_samples')
@@ -26,6 +26,9 @@ export class AprSample {
 
   @Column({ type: 'numeric', precision: 20, scale: 2, nullable: true })
   currentApr: string | null;
+
+  @Column({ type: 'numeric', precision: 20, scale: 2, nullable: true })
+  aprProjected: string | null;
 
   @Column({ type: 'numeric', precision: 78, scale: 18, nullable: true })
   deltaIndex: string | null;
