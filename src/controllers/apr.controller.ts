@@ -257,7 +257,6 @@ export class AprController {
     }
   })
   healthCheck() {
-    this.logger.debug('GET /apr/health called');
     return {
       status: 'ok'
     };
