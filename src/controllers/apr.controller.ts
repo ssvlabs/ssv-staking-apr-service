@@ -6,7 +6,8 @@ import {
   HttpCode,
   HttpStatus,
   ParseIntPipe,
-  BadRequestException
+  BadRequestException,
+  Logger
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { AprCalculationService } from '../services/apr-calculation.service';
@@ -14,7 +15,11 @@ import { AprCalculationService } from '../services/apr-calculation.service';
 @ApiTags('apr')
 @Controller('apr')
 export class AprController {
-  constructor(private readonly aprCalculationService: AprCalculationService) {}
+  private readonly logger = new Logger(AprController.name);
+
+  constructor(private readonly aprCalculationService: AprCalculationService) {
+    this.logger.log('AprController initialized');
+  }
 
   /**
    * GET /apr/current
@@ -37,9 +42,14 @@ export class AprController {
     }
   })
   async getCurrentApr() {
+    this.logger.log('GET /apr/current called');
+    const startTime = Date.now();
+
     const apr = await this.aprCalculationService.getCurrentApr();
+    const elapsed = Date.now() - startTime;
 
     if (!apr) {
+      this.logger.warn(`GET /apr/current completed in ${elapsed}ms - no APR data available`);
       return {
         currentApr: null,
         aprProjected: null,
@@ -48,6 +58,9 @@ export class AprController {
       };
     }
 
+    this.logger.log(
+      `GET /apr/current completed in ${elapsed}ms. apr=${apr.apr !== null ? apr.apr.toFixed(2) + '%' : 'null'}, aprProjected=${apr.aprProjected !== null ? apr.aprProjected.toFixed(2) + '%' : 'null'}`
+    );
     return apr;
   }
 
@@ -82,15 +95,21 @@ export class AprController {
     }
   })
   async getLatestSamples() {
+    this.logger.log('GET /apr/latest called');
+    const startTime = Date.now();
+
     const samples = await this.aprCalculationService.getLatestTwoSamples();
+    const elapsed = Date.now() - startTime;
 
     if (samples.length === 0) {
+      this.logger.warn(`GET /apr/latest completed in ${elapsed}ms - no samples in DB`);
       return {
         samples: [],
         message: 'No samples available yet.'
       };
     }
 
+    this.logger.log(`GET /apr/latest completed in ${elapsed}ms. Returned ${samples.length} samples`);
     return {
       samples,
       count: samples.length
@@ -139,14 +158,21 @@ export class AprController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string
   ) {
+    this.logger.log(
+      `GET /apr/history called. params: limit=${limit || 'default(30)'}, startDate=${startDate || 'none'}, endDate=${endDate || 'none'}`
+    );
+    const startTime = Date.now();
+
     const parsedStartDate = startDate ? new Date(startDate) : undefined;
     const parsedEndDate = endDate ? new Date(endDate) : undefined;
 
     if (parsedStartDate && isNaN(parsedStartDate.getTime())) {
+      this.logger.warn(`GET /apr/history - invalid startDate: "${startDate}"`);
       throw new BadRequestException('Invalid startDate format');
     }
 
     if (parsedEndDate && isNaN(parsedEndDate.getTime())) {
+      this.logger.warn(`GET /apr/history - invalid endDate: "${endDate}"`);
       throw new BadRequestException('Invalid endDate format');
     }
 
@@ -154,6 +180,11 @@ export class AprController {
       limit || 30,
       parsedStartDate,
       parsedEndDate
+    );
+
+    const elapsed = Date.now() - startTime;
+    this.logger.log(
+      `GET /apr/history completed in ${elapsed}ms. Returned ${samples.length} samples`
     );
 
     return {
@@ -191,7 +222,15 @@ export class AprController {
     }
   })
   async collectSample() {
+    this.logger.log('POST /apr/collect called - manual collection triggered');
+    const startTime = Date.now();
+
     const sample = await this.aprCalculationService.manualCollectSample();
+    const elapsed = Date.now() - startTime;
+
+    this.logger.log(
+      `POST /apr/collect completed in ${elapsed}ms. Sample id: ${sample.id}`
+    );
 
     return {
       message: 'APR sample collected successfully',
@@ -218,6 +257,7 @@ export class AprController {
     }
   })
   healthCheck() {
+    this.logger.debug('GET /apr/health called');
     return {
       status: 'ok'
     };
