@@ -13,7 +13,7 @@ async function bootstrap() {
   logger.debug(`PID: ${process.pid}`);
   logger.debug(`CWD: ${process.cwd()}`);
 
-  // Log non-sensitive env config
+  // Log env config
   logger.log(`NODE_ENV: ${process.env.NODE_ENV || 'not set'}`);
   logger.log(`PORT: ${process.env.PORT || '3000 (default)'}`);
   logger.log(`CORS_ORIGIN: ${process.env.CORS_ORIGIN || '* (default)'}`);
@@ -29,9 +29,7 @@ async function bootstrap() {
   logger.log(
     `DATABASE_USER: ${process.env.DATABASE_USER || 'not set'}`
   );
-  logger.log(
-    `RPC_URL: ${process.env.RPC_URL ? process.env.RPC_URL.replace(/\/[^/]*$/, '/***') : 'not set'}`
-  );
+  logger.log(`RPC_URL: ${process.env.RPC_URL || 'not set'}`);
   logger.log(
     `VIEWS_CONTRACT_ADDRESS: ${process.env.VIEWS_CONTRACT_ADDRESS || 'not set'}`
   );

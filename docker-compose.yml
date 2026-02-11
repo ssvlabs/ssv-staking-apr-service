@@ -33,7 +33,7 @@ services:
       DATABASE_USER: ssv_user
       DATABASE_PASSWORD: ssv_password
       DATABASE_NAME: ssv_apr
-      RPC_URL: ${RPC_URL:-https://0xrpc.io/hoodi}
+      RPC_URL: ${RPC_URL:-http://hoodi-execution-lb.stage.ops.ssvlabsinternal.com:32000}
       EXPLORER_CENTER_HOODI: http://localhost:8080/api/v4/hoodi
       VIEWS_CONTRACT_ADDRESS: ${VIEWS_CONTRACT_ADDRESS:-0x02e67E48e64ad381C386cdB59295aD2B79675F25}
       STAKING_CONTRACT_ADDRESS: ${STAKING_CONTRACT_ADDRESS:-0xdf4f52446DA26D29f10acafb8F1C4F658A0C92b5}

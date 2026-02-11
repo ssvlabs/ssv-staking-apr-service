@@ -145,13 +145,6 @@ export class AprCalculationService {
     }
 
     const deltaIndex = accEthPerShare - previousIndex;
-    if (deltaIndex <= 0n) {
-      this.logger.warn(
-        `computeApr(): non-positive deltaIndex (${deltaIndex.toString()}) using current=${accEthPerShare.toString()} and previous=${previousIndex.toString()}`
-      );
-      return { apr: null, deltaIndex: null, deltaTime: null };
-    }
-
     const deltaTimeMs =
       timestamp.getTime() - latestSample.timestamp.getTime();
     if (!Number.isFinite(deltaTimeMs) || deltaTimeMs <= 0) {
@@ -265,10 +258,11 @@ export class AprCalculationService {
    * Get the latest APR sample
    */
   async getLatestSample(): Promise<AprSample | null> {
-    const sample = await this.aprSampleRepository.findOne({
-      order: { timestamp: 'DESC' }
-    });
-    return sample;
+    return await this.aprSampleRepository
+      .createQueryBuilder('sample')
+      .orderBy('sample.timestamp', 'DESC')
+      .limit(1)
+      .getOne();
   }
 
   /**
