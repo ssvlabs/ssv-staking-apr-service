@@ -42,14 +42,10 @@ export class AprController {
     }
   })
   async getCurrentApr() {
-    this.logger.log('GET /apr/current called');
-    const startTime = Date.now();
 
     const apr = await this.aprCalculationService.getCurrentApr();
-    const elapsed = Date.now() - startTime;
 
     if (!apr) {
-      this.logger.warn(`GET /apr/current completed in ${elapsed}ms - no APR data available`);
       return {
         currentApr: null,
         aprProjected: null,
@@ -57,10 +53,6 @@ export class AprController {
           'No APR data available yet. Please wait for the first sample collection.'
       };
     }
-
-    this.logger.log(
-      `GET /apr/current completed in ${elapsed}ms. apr=${apr.apr !== null ? apr.apr.toFixed(2) + '%' : 'null'}, aprProjected=${apr.aprProjected !== null ? apr.aprProjected.toFixed(2) + '%' : 'null'}`
-    );
     return apr;
   }
 
@@ -95,21 +87,15 @@ export class AprController {
     }
   })
   async getLatestSamples() {
-    this.logger.log('GET /apr/latest called');
-    const startTime = Date.now();
-
     const samples = await this.aprCalculationService.getLatestTwoSamples();
-    const elapsed = Date.now() - startTime;
 
     if (samples.length === 0) {
-      this.logger.warn(`GET /apr/latest completed in ${elapsed}ms - no samples in DB`);
       return {
         samples: [],
         message: 'No samples available yet.'
       };
     }
 
-    this.logger.log(`GET /apr/latest completed in ${elapsed}ms. Returned ${samples.length} samples`);
     return {
       samples,
       count: samples.length
@@ -158,11 +144,6 @@ export class AprController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string
   ) {
-    this.logger.log(
-      `GET /apr/history called. params: limit=${limit || 'default(30)'}, startDate=${startDate || 'none'}, endDate=${endDate || 'none'}`
-    );
-    const startTime = Date.now();
-
     const parsedStartDate = startDate ? new Date(startDate) : undefined;
     const parsedEndDate = endDate ? new Date(endDate) : undefined;
 
@@ -180,11 +161,6 @@ export class AprController {
       limit || 30,
       parsedStartDate,
       parsedEndDate
-    );
-
-    const elapsed = Date.now() - startTime;
-    this.logger.log(
-      `GET /apr/history completed in ${elapsed}ms. Returned ${samples.length} samples`
     );
 
     return {
@@ -222,15 +198,7 @@ export class AprController {
     }
   })
   async collectSample() {
-    this.logger.log('POST /apr/collect called - manual collection triggered');
-    const startTime = Date.now();
-
     const sample = await this.aprCalculationService.manualCollectSample();
-    const elapsed = Date.now() - startTime;
-
-    this.logger.log(
-      `POST /apr/collect completed in ${elapsed}ms. Sample id: ${sample.id}`
-    );
 
     return {
       message: 'APR sample collected successfully',

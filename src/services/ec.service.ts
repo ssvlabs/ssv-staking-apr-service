@@ -45,12 +45,33 @@ export class EcService {
     }
   }
 
+  private gweiToEthString(value: string): string {
+    const trimmed = value.trim();
+    if (!/^\d+$/.test(trimmed)) {
+      throw new Error(`Invalid gwei value: "${value}"`);
+    }
+
+    const gwei = BigInt(trimmed);
+    const base = 1_000_000_000n;
+    const whole = gwei / base;
+    const fraction = gwei % base;
+
+    if (fraction === 0n) {
+      return whole.toString();
+    }
+
+    const fractionStr = fraction
+      .toString()
+      .padStart(9, '0')
+      .replace(/0+$/, '');
+
+    return `${whole.toString()}.${fractionStr}`;
+  }
+
   async getValidatorsEffectiveBalance(): Promise<string> {
-    this.logger.log('getValidatorsEffectiveBalance() called');
     this.ensureConfigured();
 
     const endpoint = '/validators/effective-balance';
-    this.logger.log(`Fetching validators effective balance: GET ${this.baseUrl}${endpoint}`);
 
     const startTime = Date.now();
 
@@ -60,15 +81,7 @@ export class EcService {
           endpoint
         );
 
-      const elapsed = Date.now() - startTime;
-      this.logger.log(
-        `EC validators endpoint responded in ${elapsed}ms. HTTP status: ${response.status}`
-      );
-      this.logger.debug(`Raw response data: ${JSON.stringify(response.data)}`);
-
       const value = response.data?.total_effective_balance;
-
-      this.logger.debug(`total_effective_balance: ${value} (type: ${typeof value})`);
 
       if (typeof value !== 'string') {
         this.logger.error(
@@ -77,8 +90,8 @@ export class EcService {
         throw new Error('Missing total_effective_balance from EC');
       }
 
-      this.logger.log(`Validators effective balance: ${value}`);
-      return value;
+      const ethValue = this.gweiToEthString(value);
+      return ethValue;
     } catch (error) {
       const elapsed = Date.now() - startTime;
       const message = error instanceof Error ? error.message : String(error);
@@ -108,11 +121,9 @@ export class EcService {
   }
 
   async getClustersEffectiveBalance(): Promise<string> {
-    this.logger.log('getClustersEffectiveBalance() called');
     this.ensureConfigured();
 
     const endpoint = '/clusters/effective-balance';
-    this.logger.log(`Fetching clusters effective balance: GET ${this.baseUrl}${endpoint}`);
 
     const startTime = Date.now();
 
@@ -122,15 +133,7 @@ export class EcService {
           endpoint
         );
 
-      const elapsed = Date.now() - startTime;
-      this.logger.log(
-        `EC clusters endpoint responded in ${elapsed}ms. HTTP status: ${response.status}`
-      );
-      this.logger.debug(`Raw response data: ${JSON.stringify(response.data)}`);
-
       const value = response.data?.totalEffectiveBalance;
-
-      this.logger.debug(`totalEffectiveBalance: ${value} (type: ${typeof value})`);
 
       if (typeof value !== 'string') {
         this.logger.error(
@@ -139,7 +142,6 @@ export class EcService {
         throw new Error('Missing totalEffectiveBalance from EC');
       }
 
-      this.logger.log(`Clusters effective balance: ${value}`);
       return value;
     } catch (error) {
       const elapsed = Date.now() - startTime;
