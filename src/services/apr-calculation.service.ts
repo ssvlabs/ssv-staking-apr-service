@@ -29,6 +29,22 @@ export class AprCalculationService {
     this.logger.log('AprCalculationService constructed');
   }
 
+  private parseWeiFromNumeric(value: string): bigint {
+    const trimmed = value.trim();
+    if (!/^\d+(\.\d+)?$/.test(trimmed)) {
+      throw new Error(`Invalid numeric value: "${value}"`);
+    }
+
+    const [whole, fraction = ''] = trimmed.split('.');
+    if (fraction.length > 0 && /[^0]/.test(fraction)) {
+      this.logger.warn(
+        `Fractional wei detected in accEthPerShare, truncating: "${value}"`
+      );
+    }
+
+    return BigInt(whole);
+  }
+
   /**
    * Scheduled job to collect APR sample every 24 hours
    * Default cron: 0 0 * * * (every day at midnight UTC)
@@ -55,12 +71,16 @@ export class AprCalculationService {
       this.logger.debug(`Sample timestamp: ${timestamp.toISOString()}`);
 
       this.logger.log('Computing APR...');
-      const apr = this.computeApr(
+      const aprResult = await this.computeApr(
         accEthPerShare,
         prices.ethPrice,
-        prices.ssvPrice
+        prices.ssvPrice,
+        timestamp
       );
-      this.logger.log(`APR computed: ${apr !== null ? apr.toFixed(4) + '%' : 'null'}`);
+      const apr = aprResult.apr;
+      this.logger.log(
+        `APR computed: ${apr !== null ? apr.toFixed(4) + '%' : 'null'}`
+      );
 
       this.logger.log('Computing projected APR...');
       const aprProjected = await this.getProjectedApr(apr);
@@ -76,8 +96,8 @@ export class AprCalculationService {
         ssvPrice: prices.ssvPrice.toString(),
         currentApr: apr !== null ? apr.toFixed(2) : null,
         aprProjected: aprProjected !== null ? aprProjected.toFixed(2) : null,
-        deltaIndex: null,
-        deltaTime: null
+        deltaIndex: aprResult.deltaIndex,
+        deltaTime: aprResult.deltaTime
       });
 
       this.logger.debug(`Sample entity to save: ${JSON.stringify(sample)}`);
@@ -110,13 +130,19 @@ export class AprCalculationService {
 
   /**
    * Compute APR from accEthPerShare and token prices
-   * Formula: APR = ratePerShare × SECONDS_PER_YEAR × (priceEth / priceSsv) × 100
+   * Formula:
+   * APR = ((ΔIndex / (1e18 × ΔTime)) × SECONDS_PER_YEAR) × (priceEth / priceSsv) × 100
    */
-  private computeApr(
+  private async computeApr(
     accEthPerShare: bigint,
     priceEth: number,
-    priceSsv: number
-  ): number | null {
+    priceSsv: number,
+    timestamp: Date
+  ): Promise<{
+    apr: number | null;
+    deltaIndex: string | null;
+    deltaTime: number | null;
+  }> {
     this.logger.debug(
       `computeApr() inputs: accEthPerShare=${accEthPerShare.toString()}, priceEth=${priceEth}, priceSsv=${priceSsv}`
     );
@@ -125,7 +151,7 @@ export class AprCalculationService {
       this.logger.warn(
         `Invalid price data. priceEth=${priceEth} (isFinite: ${Number.isFinite(priceEth)}), priceSsv=${priceSsv} (isFinite: ${Number.isFinite(priceSsv)})`
       );
-      return null;
+      return { apr: null, deltaIndex: null, deltaTime: null };
     }
 
     if (priceEth <= 0 || priceSsv <= 0) {
@@ -134,39 +160,78 @@ export class AprCalculationService {
       );
     }
 
-    // Convert accEthPerShare from wei to ether (18 decimals)
-    const ratePerShare = Number(accEthPerShare) / 1e18;
-    this.logger.debug(
-      `ratePerShare (wei->ether): ${ratePerShare} (from ${accEthPerShare.toString()})`
-    );
-
-    if (!Number.isFinite(ratePerShare) || ratePerShare <= 0) {
+    const latestSample = await this.getLatestSample();
+    if (!latestSample) {
       this.logger.warn(
-        `Invalid ratePerShare: ${ratePerShare}. accEthPerShare was: ${accEthPerShare.toString()}`
+        'computeApr(): no previous sample found, cannot compute delta-based APR'
       );
-      return null;
+      return { apr: null, deltaIndex: null, deltaTime: null };
     }
 
-    // APR = ratePerShare × SECONDS_PER_YEAR × (priceEth / priceSsv) × 100
+    let previousIndex: bigint;
+    try {
+      previousIndex = this.parseWeiFromNumeric(latestSample.accEthPerShare);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `computeApr(): failed to parse previous accEthPerShare "${latestSample.accEthPerShare}": ${message}`
+      );
+      return { apr: null, deltaIndex: null, deltaTime: null };
+    }
+
+    const deltaIndex = accEthPerShare - previousIndex;
+    if (deltaIndex <= 0n) {
+      this.logger.warn(
+        `computeApr(): non-positive deltaIndex (${deltaIndex.toString()}) using current=${accEthPerShare.toString()} and previous=${previousIndex.toString()}`
+      );
+      return { apr: null, deltaIndex: null, deltaTime: null };
+    }
+
+    const deltaTimeSeconds = Math.floor(
+      (timestamp.getTime() - latestSample.timestamp.getTime()) / 1000
+    );
+    if (!Number.isFinite(deltaTimeSeconds) || deltaTimeSeconds <= 0) {
+      this.logger.warn(
+        `computeApr(): invalid deltaTimeSeconds=${deltaTimeSeconds} using current=${timestamp.toISOString()} and previous=${latestSample.timestamp.toISOString()}`
+      );
+      return { apr: null, deltaIndex: null, deltaTime: null };
+    }
+
     const priceRatio = priceEth / priceSsv;
     this.logger.debug(
       `priceRatio (ETH/SSV): ${priceRatio} (${priceEth} / ${priceSsv})`
     );
 
-    const apr = ratePerShare * SECONDS_PER_YEAR * priceRatio * 100;
+    if (deltaIndex > BigInt(Number.MAX_SAFE_INTEGER)) {
+      this.logger.warn(
+        `computeApr(): deltaIndex exceeds MAX_SAFE_INTEGER; precision may be lost. deltaIndex=${deltaIndex.toString()}`
+      );
+    }
+
+    const deltaIndexEth = Number(deltaIndex) / 1e18;
+    const ratePerSecond = deltaIndexEth / deltaTimeSeconds;
     this.logger.debug(
-      `APR formula: ${ratePerShare} * ${SECONDS_PER_YEAR} * ${priceRatio} * 100 = ${apr}`
+      `Delta inputs: deltaIndex=${deltaIndex.toString()}, deltaTimeSeconds=${deltaTimeSeconds}, ratePerSecond=${ratePerSecond}`
+    );
+
+    const apr = ratePerSecond * SECONDS_PER_YEAR * priceRatio * 100;
+    this.logger.debug(
+      `APR formula: (${ratePerSecond} * ${SECONDS_PER_YEAR}) * ${priceRatio} * 100 = ${apr}`
     );
 
     if (!Number.isFinite(apr)) {
       this.logger.warn(
-        `Calculated APR is not finite: ${apr}. Inputs were: ratePerShare=${ratePerShare}, priceRatio=${priceRatio}`
+        `Calculated APR is not finite: ${apr}. Inputs were: ratePerSecond=${ratePerSecond}, priceRatio=${priceRatio}`
       );
-      return null;
+      return { apr: null, deltaIndex: null, deltaTime: null };
     }
 
     this.logger.log(`Computed APR: ${apr.toFixed(2)}%`);
-    return apr;
+    return {
+      apr,
+      deltaIndex: deltaIndex.toString(),
+      deltaTime: deltaTimeSeconds
+    };
   }
 
   /**
@@ -311,11 +376,13 @@ export class AprCalculationService {
       );
 
       this.logger.log('Computing APR...');
-      const apr = this.computeApr(
+      const aprResult = await this.computeApr(
         accEthPerShare,
         prices.ethPrice,
-        prices.ssvPrice
+        prices.ssvPrice,
+        new Date()
       );
+      const apr = aprResult.apr;
 
       this.logger.log('Computing projected APR...');
       const aprProjected = await this.getProjectedApr(apr);
