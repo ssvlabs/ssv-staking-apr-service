@@ -69,11 +69,9 @@ export class EcService {
   }
 
   async getValidatorsEffectiveBalance(): Promise<string> {
-    this.logger.log('getValidatorsEffectiveBalance() called');
     this.ensureConfigured();
 
     const endpoint = '/validators/effective-balance';
-    this.logger.log(`Fetching validators effective balance: GET ${this.baseUrl}${endpoint}`);
 
     const startTime = Date.now();
 
@@ -83,15 +81,7 @@ export class EcService {
           endpoint
         );
 
-      const elapsed = Date.now() - startTime;
-      this.logger.log(
-        `EC validators endpoint responded in ${elapsed}ms. HTTP status: ${response.status}`
-      );
-      this.logger.debug(`Raw response data: ${JSON.stringify(response.data)}`);
-
       const value = response.data?.total_effective_balance;
-
-      this.logger.debug(`total_effective_balance: ${value} (type: ${typeof value})`);
 
       if (typeof value !== 'string') {
         this.logger.error(
@@ -101,9 +91,6 @@ export class EcService {
       }
 
       const ethValue = this.gweiToEthString(value);
-      this.logger.log(
-        `Validators effective balance: ${value} gwei (${ethValue} ETH)`
-      );
       return ethValue;
     } catch (error) {
       const elapsed = Date.now() - startTime;
@@ -134,11 +121,9 @@ export class EcService {
   }
 
   async getClustersEffectiveBalance(): Promise<string> {
-    this.logger.log('getClustersEffectiveBalance() called');
     this.ensureConfigured();
 
     const endpoint = '/clusters/effective-balance';
-    this.logger.log(`Fetching clusters effective balance: GET ${this.baseUrl}${endpoint}`);
 
     const startTime = Date.now();
 
@@ -148,15 +133,7 @@ export class EcService {
           endpoint
         );
 
-      const elapsed = Date.now() - startTime;
-      this.logger.log(
-        `EC clusters endpoint responded in ${elapsed}ms. HTTP status: ${response.status}`
-      );
-      this.logger.debug(`Raw response data: ${JSON.stringify(response.data)}`);
-
       const value = response.data?.totalEffectiveBalance;
-
-      this.logger.debug(`totalEffectiveBalance: ${value} (type: ${typeof value})`);
 
       if (typeof value !== 'string') {
         this.logger.error(
@@ -165,7 +142,6 @@ export class EcService {
         throw new Error('Missing totalEffectiveBalance from EC');
       }
 
-      this.logger.log(`Clusters effective balance: ${value}`);
       return value;
     } catch (error) {
       const elapsed = Date.now() - startTime;

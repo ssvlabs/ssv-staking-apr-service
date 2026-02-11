@@ -17,18 +17,10 @@ export class BlockchainService implements OnModuleInit {
     this.rpcUrl = this.configService.get<string>('RPC_URL') || '';
     this.viewsContractAddress =
       this.configService.get<string>('VIEWS_CONTRACT_ADDRESS') || '';
-
-    this.logger.debug(
-      `BlockchainService constructed. RPC_URL configured: ${!!this.rpcUrl}, VIEWS_CONTRACT_ADDRESS: ${this.viewsContractAddress || 'not set'}`
-    );
   }
 
   async onModuleInit() {
-    this.logger.log('BlockchainService.onModuleInit() called');
-
     try {
-      this.logger.log('Initializing blockchain connection');
-
       if (!this.rpcUrl) {
         this.logger.warn('RPC_URL is empty. Blockchain features will be disabled.');
         return;
@@ -88,8 +80,6 @@ export class BlockchainService implements OnModuleInit {
    * Read accEthPerShare from the Views contract
    */
   async getAccEthPerShare(): Promise<bigint> {
-    this.logger.log('getAccEthPerShare() called');
-
     try {
       if (!this.viewsContract) {
         this.logger.error(
@@ -101,20 +91,8 @@ export class BlockchainService implements OnModuleInit {
         throw new Error('Views contract not initialized');
       }
 
-      this.logger.log(
-        `Calling accEthPerShare() on contract ${this.viewsContractAddress}`
-      );
-      const startTime = Date.now();
       const accEthPerShare =
         (await this.viewsContract.accEthPerShare()) as unknown as bigint;
-      const elapsed = Date.now() - startTime;
-
-      this.logger.log(
-        `accEthPerShare call completed in ${elapsed}ms. Value: ${accEthPerShare.toString()}`
-      );
-      this.logger.debug(
-        `accEthPerShare as float (wei->ether): ${Number(accEthPerShare) / 1e18}`
-      );
 
       return accEthPerShare;
     } catch (error) {

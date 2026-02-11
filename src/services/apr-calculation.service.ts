@@ -51,26 +51,14 @@ export class AprCalculationService {
    */
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
   async collectAprSample(): Promise<AprSample> {
-    const startTime = Date.now();
-    this.logger.log('=== collectAprSample() started ===');
-
     try {
-      this.logger.log(
-        'Fetching accEthPerShare and prices in parallel...'
-      );
       const [accEthPerShare, prices] = await Promise.all([
         this.blockchainService.getAccEthPerShare(),
         this.coinGeckoService.getPrices()
       ]);
 
-      this.logger.log(
-        `Data fetched. accEthPerShare: ${accEthPerShare.toString()}, ethPrice: ${prices.ethPrice}, ssvPrice: ${prices.ssvPrice}`
-      );
-
       const timestamp = new Date();
-      this.logger.debug(`Sample timestamp: ${timestamp.toISOString()}`);
 
-      this.logger.log('Computing APR...');
       const aprResult = await this.computeApr(
         accEthPerShare,
         prices.ethPrice,
@@ -78,17 +66,9 @@ export class AprCalculationService {
         timestamp
       );
       const apr = aprResult.apr;
-      this.logger.log(
-        `APR computed: ${apr !== null ? apr.toFixed(4) + '%' : 'null'}`
-      );
 
-      this.logger.log('Computing projected APR...');
       const aprProjected = await this.getProjectedApr(apr);
-      this.logger.log(
-        `Projected APR computed: ${aprProjected !== null ? aprProjected.toFixed(4) + '%' : 'null'}`
-      );
 
-      this.logger.log('Creating sample entity...');
       const sample = this.aprSampleRepository.create({
         timestamp,
         accEthPerShare: accEthPerShare.toString(),
@@ -100,26 +80,15 @@ export class AprCalculationService {
         deltaTime: aprResult.deltaTime
       });
 
-      this.logger.debug(`Sample entity to save: ${JSON.stringify(sample)}`);
-
-      this.logger.log('Saving sample to database...');
       const savedSample = await this.aprSampleRepository.save(sample);
 
-      const elapsed = Date.now() - startTime;
-      this.logger.log(
-        `=== collectAprSample() completed in ${elapsed}ms. Saved sample id: ${savedSample.id} ===`
-      );
-      this.logger.log(
-        `APR sample collected successfully. APR: ${apr !== null ? apr.toFixed(2) : '--'}%, projected: ${aprProjected !== null ? aprProjected.toFixed(2) : '--'}%`
-      );
 
       return savedSample;
     } catch (error) {
-      const elapsed = Date.now() - startTime;
       const message = error instanceof Error ? error.message : String(error);
       const stack = error instanceof Error ? error.stack : undefined;
       this.logger.error(
-        `=== collectAprSample() FAILED after ${elapsed}ms: ${message} ===`
+        `=== collectAprSample() FAILED: ${message} ===`
       );
       if (stack) {
         this.logger.error(`Stack trace: ${stack}`);
@@ -143,10 +112,6 @@ export class AprCalculationService {
     deltaIndex: string | null;
     deltaTime: number | null;
   }> {
-    this.logger.debug(
-      `computeApr() inputs: accEthPerShare=${accEthPerShare.toString()}, priceEth=${priceEth}, priceSsv=${priceSsv}`
-    );
-
     if (!Number.isFinite(priceEth) || !Number.isFinite(priceSsv)) {
       this.logger.warn(
         `Invalid price data. priceEth=${priceEth} (isFinite: ${Number.isFinite(priceEth)}), priceSsv=${priceSsv} (isFinite: ${Number.isFinite(priceSsv)})`
@@ -187,20 +152,15 @@ export class AprCalculationService {
       return { apr: null, deltaIndex: null, deltaTime: null };
     }
 
-    const deltaTimeSeconds = Math.floor(
-      (timestamp.getTime() - latestSample.timestamp.getTime()) / 1000
-    );
-    if (!Number.isFinite(deltaTimeSeconds) || deltaTimeSeconds <= 0) {
-      this.logger.warn(
-        `computeApr(): invalid deltaTimeSeconds=${deltaTimeSeconds} using current=${timestamp.toISOString()} and previous=${latestSample.timestamp.toISOString()}`
-      );
+    const deltaTimeMs =
+      timestamp.getTime() - latestSample.timestamp.getTime();
+    if (!Number.isFinite(deltaTimeMs) || deltaTimeMs <= 0) {
       return { apr: null, deltaIndex: null, deltaTime: null };
     }
 
+    const deltaTimeSeconds = deltaTimeMs / 1000;
+
     const priceRatio = priceEth / priceSsv;
-    this.logger.debug(
-      `priceRatio (ETH/SSV): ${priceRatio} (${priceEth} / ${priceSsv})`
-    );
 
     if (deltaIndex > BigInt(Number.MAX_SAFE_INTEGER)) {
       this.logger.warn(
@@ -210,14 +170,8 @@ export class AprCalculationService {
 
     const deltaIndexEth = Number(deltaIndex) / 1e18;
     const ratePerSecond = deltaIndexEth / deltaTimeSeconds;
-    this.logger.debug(
-      `Delta inputs: deltaIndex=${deltaIndex.toString()}, deltaTimeSeconds=${deltaTimeSeconds}, ratePerSecond=${ratePerSecond}`
-    );
 
     const apr = ratePerSecond * SECONDS_PER_YEAR * priceRatio * 100;
-    this.logger.debug(
-      `APR formula: (${ratePerSecond} * ${SECONDS_PER_YEAR}) * ${priceRatio} * 100 = ${apr}`
-    );
 
     if (!Number.isFinite(apr)) {
       this.logger.warn(
@@ -226,11 +180,10 @@ export class AprCalculationService {
       return { apr: null, deltaIndex: null, deltaTime: null };
     }
 
-    this.logger.log(`Computed APR: ${apr.toFixed(2)}%`);
     return {
       apr,
       deltaIndex: deltaIndex.toString(),
-      deltaTime: deltaTimeSeconds
+      deltaTime: deltaTimeMs
     };
   }
 
@@ -243,21 +196,13 @@ export class AprCalculationService {
     clustersEffectiveBalance: string,
     validatorsEffectiveBalance: string
   ): number | null {
-    this.logger.debug(
-      `computeAprProjected() inputs: apr=${apr}, clustersEB=${clustersEffectiveBalance}, validatorsEB=${validatorsEffectiveBalance}`
-    );
-
     if (apr === null) {
-      this.logger.debug('computeAprProjected(): apr is null, returning null');
+      this.logger.warn('computeAprProjected(): apr is null, returning null');
       return null;
     }
 
     const clusters = Number(clustersEffectiveBalance);
     const validators = Number(validatorsEffectiveBalance);
-
-    this.logger.debug(
-      `Parsed balances - clusters: ${clusters}, validators: ${validators}`
-    );
 
     if (!Number.isFinite(clusters) || !Number.isFinite(validators)) {
       this.logger.warn(
@@ -274,14 +219,8 @@ export class AprCalculationService {
     }
 
     const ratio = clusters / validators;
-    this.logger.debug(
-      `Effective balance ratio (clusters/validators): ${ratio} (${clusters} / ${validators})`
-    );
 
     const projected = apr * ratio;
-    this.logger.debug(
-      `Projected APR formula: ${apr} * ${ratio} = ${projected}`
-    );
 
     if (!Number.isFinite(projected)) {
       this.logger.warn(
@@ -290,29 +229,21 @@ export class AprCalculationService {
       return null;
     }
 
-    this.logger.log(`Computed projected APR: ${projected.toFixed(2)}%`);
     return projected;
   }
 
   private async getProjectedApr(apr: number | null): Promise<number | null> {
-    this.logger.log(`getProjectedApr() called with apr=${apr}`);
-
     if (apr === null) {
       this.logger.warn('getProjectedApr(): apr is null, skipping projected APR calculation');
       return null;
     }
 
     try {
-      this.logger.log('Fetching clusters and validators effective balances in parallel...');
       const [clustersEffectiveBalance, validatorsEffectiveBalance] =
         await Promise.all([
           this.ecService.getClustersEffectiveBalance(),
           this.ecService.getValidatorsEffectiveBalance()
         ]);
-
-      this.logger.log(
-        `Effective balances fetched - clusters: ${clustersEffectiveBalance}, validators: ${validatorsEffectiveBalance}`
-      );
 
       return this.computeAprProjected(
         apr,
@@ -334,13 +265,9 @@ export class AprCalculationService {
    * Get the latest APR sample
    */
   async getLatestSample(): Promise<AprSample | null> {
-    this.logger.debug('getLatestSample() called');
     const sample = await this.aprSampleRepository.findOne({
       order: { timestamp: 'DESC' }
     });
-    this.logger.debug(
-      `getLatestSample() result: ${sample ? `id=${sample.id}, timestamp=${sample.timestamp}` : 'null'}`
-    );
     return sample;
   }
 
@@ -348,12 +275,10 @@ export class AprCalculationService {
    * Get the two latest samples for APR display
    */
   async getLatestTwoSamples(): Promise<AprSample[]> {
-    this.logger.debug('getLatestTwoSamples() called');
     const samples = await this.aprSampleRepository.find({
       order: { timestamp: 'DESC' },
       take: 2
     });
-    this.logger.debug(`getLatestTwoSamples() returned ${samples.length} samples`);
     return samples;
   }
 
@@ -362,20 +287,13 @@ export class AprCalculationService {
    */
   async getCurrentApr(): Promise<CurrentAprResponse | null> {
     const startTime = Date.now();
-    this.logger.log('=== getCurrentApr() started ===');
 
     try {
-      this.logger.log('Fetching accEthPerShare and prices in parallel...');
       const [accEthPerShare, prices] = await Promise.all([
         this.blockchainService.getAccEthPerShare(),
         this.coinGeckoService.getPrices()
       ]);
 
-      this.logger.log(
-        `Data fetched. accEthPerShare: ${accEthPerShare.toString()}, ethPrice: ${prices.ethPrice}, ssvPrice: ${prices.ssvPrice}`
-      );
-
-      this.logger.log('Computing APR...');
       const aprResult = await this.computeApr(
         accEthPerShare,
         prices.ethPrice,
@@ -384,15 +302,9 @@ export class AprCalculationService {
       );
       const apr = aprResult.apr;
 
-      this.logger.log('Computing projected APR...');
       const aprProjected = await this.getProjectedApr(apr);
 
-      const lastUpdated = Math.floor(Date.now() / 1000);
-      const elapsed = Date.now() - startTime;
-
-      this.logger.log(
-        `=== getCurrentApr() completed in ${elapsed}ms. apr=${apr !== null ? apr.toFixed(2) + '%' : 'null'}, aprProjected=${aprProjected !== null ? aprProjected.toFixed(2) + '%' : 'null'} ===`
-      );
+      const lastUpdated = Date.now();
 
       return {
         apr,
@@ -400,11 +312,10 @@ export class AprCalculationService {
         lastUpdated
       };
     } catch (error) {
-      const elapsed = Date.now() - startTime;
       const message = error instanceof Error ? error.message : String(error);
       const stack = error instanceof Error ? error.stack : undefined;
       this.logger.error(
-        `=== getCurrentApr() FAILED after ${elapsed}ms: ${message} ===`
+        `=== getCurrentApr() FAILED: ${message} ===`
       );
       if (stack) {
         this.logger.error(`Stack trace: ${stack}`);
@@ -421,10 +332,6 @@ export class AprCalculationService {
     startDate?: Date,
     endDate?: Date
   ): Promise<AprSample[]> {
-    this.logger.log(
-      `getHistoricalSamples() called. limit=${limit}, startDate=${startDate?.toISOString() || 'none'}, endDate=${endDate?.toISOString() || 'none'}`
-    );
-
     const queryBuilder = this.aprSampleRepository
       .createQueryBuilder('sample')
       .orderBy('sample.timestamp', 'DESC')
@@ -439,7 +346,6 @@ export class AprCalculationService {
     }
 
     const samples = await queryBuilder.getMany();
-    this.logger.log(`getHistoricalSamples() returned ${samples.length} samples`);
     return samples;
   }
 
@@ -448,24 +354,18 @@ export class AprCalculationService {
    */
   @Cron(CronExpression.EVERY_WEEK)
   async cleanupOldSamples(): Promise<void> {
-    this.logger.log('cleanupOldSamples() started');
     const oneYearAgo = new Date();
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-
-    this.logger.log(`Deleting samples older than: ${oneYearAgo.toISOString()}`);
 
     const result = await this.aprSampleRepository.delete({
       timestamp: LessThan(oneYearAgo)
     });
-
-    this.logger.log(`Cleaned up ${result.affected} old APR samples`);
   }
 
   /**
    * Manual trigger for APR collection (for testing)
    */
   async manualCollectSample(): Promise<AprSample> {
-    this.logger.log('manualCollectSample() called - manual APR sample collection triggered');
     return await this.collectAprSample();
   }
 }

@@ -39,7 +39,6 @@ export class CoinGeckoService {
    * Get current prices for ETH and SSV (for APR calculation)
    */
   async getPrices(): Promise<TokenPrices> {
-    this.logger.log('getPrices() called');
     return this.getSpotPrices();
   }
 
@@ -50,9 +49,6 @@ export class CoinGeckoService {
     const requestUrl = `${this.baseUrl}/simple/price`;
     const params = { ids: 'ethereum,ssv-network', vs_currencies: 'usd' };
 
-    this.logger.log(`Fetching spot prices from CoinGecko: GET ${requestUrl}`);
-    this.logger.debug(`Request params: ${JSON.stringify(params)}`);
-
     const startTime = Date.now();
 
     try {
@@ -62,19 +58,8 @@ export class CoinGeckoService {
           { params }
         );
 
-      const elapsed = Date.now() - startTime;
-      this.logger.log(
-        `CoinGecko responded in ${elapsed}ms. HTTP status: ${response.status}`
-      );
-      this.logger.debug(`Response headers: ${JSON.stringify(response.headers)}`);
-      this.logger.debug(`Raw response data: ${JSON.stringify(response.data)}`);
-
       const ethPrice = response.data.ethereum?.usd;
       const ssvPrice = response.data['ssv-network']?.usd;
-
-      this.logger.debug(
-        `Parsed prices - ethereum.usd: ${ethPrice}, ssv-network.usd: ${ssvPrice}`
-      );
 
       if (typeof ethPrice !== 'number' || typeof ssvPrice !== 'number') {
         this.logger.error(
@@ -85,8 +70,6 @@ export class CoinGeckoService {
         );
         throw new Error('Missing price data from CoinGecko');
       }
-
-      this.logger.log(`Spot prices - ETH: $${ethPrice}, SSV: $${ssvPrice}`);
 
       return { ethPrice, ssvPrice };
     } catch (error) {
