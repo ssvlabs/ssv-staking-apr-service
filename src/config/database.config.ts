@@ -12,6 +12,8 @@ export const getDatabaseConfig = (
   password: configService.get<string>('DATABASE_PASSWORD'),
   database: configService.get<string>('DATABASE_NAME'),
   entities: [AprSample],
+  migrations: [__dirname + '/../migrations/*.{ts,js}'],
+  migrationsRun: configService.get<string>('TYPEORM_MIGRATIONS_RUN') === 'true',
   synchronize: configService.get<string>('NODE_ENV') === 'development',
   logging: configService.get<string>('NODE_ENV') === 'development'
 });
