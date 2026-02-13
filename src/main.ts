@@ -17,18 +17,10 @@ async function bootstrap() {
   logger.log(`NODE_ENV: ${process.env.NODE_ENV || 'not set'}`);
   logger.log(`PORT: ${process.env.PORT || '3000 (default)'}`);
   logger.log(`CORS_ORIGIN: ${process.env.CORS_ORIGIN || '* (default)'}`);
-  logger.log(
-    `DATABASE_HOST: ${process.env.DATABASE_HOST || 'not set'}`
-  );
-  logger.log(
-    `DATABASE_PORT: ${process.env.DATABASE_PORT || 'not set'}`
-  );
-  logger.log(
-    `DATABASE_NAME: ${process.env.DATABASE_NAME || 'not set'}`
-  );
-  logger.log(
-    `DATABASE_USER: ${process.env.DATABASE_USER || 'not set'}`
-  );
+  logger.log(`DATABASE_HOST: ${process.env.DATABASE_HOST || 'not set'}`);
+  logger.log(`DATABASE_PORT: ${process.env.DATABASE_PORT || 'not set'}`);
+  logger.log(`DATABASE_NAME: ${process.env.DATABASE_NAME || 'not set'}`);
+  logger.log(`DATABASE_USER: ${process.env.DATABASE_USER || 'not set'}`);
   logger.log(`RPC_URL: ${process.env.RPC_URL || 'not set'}`);
   logger.log(
     `VIEWS_CONTRACT_ADDRESS: ${process.env.VIEWS_CONTRACT_ADDRESS || 'not set'}`
