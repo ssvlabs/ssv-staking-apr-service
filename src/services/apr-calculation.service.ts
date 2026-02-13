@@ -82,14 +82,11 @@ export class AprCalculationService {
 
       const savedSample = await this.aprSampleRepository.save(sample);
 
-
       return savedSample;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const stack = error instanceof Error ? error.stack : undefined;
-      this.logger.error(
-        `=== collectAprSample() FAILED: ${message} ===`
-      );
+      this.logger.error(`=== collectAprSample() FAILED: ${message} ===`);
       if (stack) {
         this.logger.error(`Stack trace: ${stack}`);
       }
@@ -145,8 +142,7 @@ export class AprCalculationService {
     }
 
     const deltaIndex = accEthPerShare - previousIndex;
-    const deltaTimeMs =
-      timestamp.getTime() - latestSample.timestamp.getTime();
+    const deltaTimeMs = timestamp.getTime() - latestSample.timestamp.getTime();
     if (!Number.isFinite(deltaTimeMs) || deltaTimeMs <= 0) {
       return { apr: null, deltaIndex: null, deltaTime: null };
     }
@@ -227,7 +223,9 @@ export class AprCalculationService {
 
   private async getProjectedApr(apr: number | null): Promise<number | null> {
     if (apr === null) {
-      this.logger.warn('getProjectedApr(): apr is null, skipping projected APR calculation');
+      this.logger.warn(
+        'getProjectedApr(): apr is null, skipping projected APR calculation'
+      );
       return null;
     }
 
@@ -280,8 +278,6 @@ export class AprCalculationService {
    * Get current APR data for the API
    */
   async getCurrentApr(): Promise<CurrentAprResponse | null> {
-    const startTime = Date.now();
-
     try {
       const [accEthPerShare, prices] = await Promise.all([
         this.blockchainService.getAccEthPerShare(),
@@ -308,9 +304,7 @@ export class AprCalculationService {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const stack = error instanceof Error ? error.stack : undefined;
-      this.logger.error(
-        `=== getCurrentApr() FAILED: ${message} ===`
-      );
+      this.logger.error(`=== getCurrentApr() FAILED: ${message} ===`);
       if (stack) {
         this.logger.error(`Stack trace: ${stack}`);
       }
@@ -351,7 +345,7 @@ export class AprCalculationService {
     const oneYearAgo = new Date();
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
 
-    const result = await this.aprSampleRepository.delete({
+    await this.aprSampleRepository.delete({
       timestamp: LessThan(oneYearAgo)
     });
   }
