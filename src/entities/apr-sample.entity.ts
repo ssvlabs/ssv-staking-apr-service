@@ -15,8 +15,8 @@ export class AprSample {
   @Index()
   timestamp: Date;
 
-  @Column({ type: 'numeric', precision: 78, scale: 18 })
-  accEthPerShare: string;
+  @Column({ name: 'accEthPerShare', type: 'numeric', precision: 78, scale: 18 })
+  networkFeeWei: string;
 
   @Column({ type: 'numeric', precision: 18, scale: 8 })
   ethPrice: string;

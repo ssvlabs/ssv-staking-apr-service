@@ -42,7 +42,6 @@ export class AprController {
     }
   })
   async getCurrentApr() {
-
     const apr = await this.aprCalculationService.getCurrentApr();
 
     if (!apr) {

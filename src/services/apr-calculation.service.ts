@@ -2,12 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThan } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { ethers } from 'ethers';
 import { AprSample } from '../entities/apr-sample.entity';
 import { BlockchainService } from './blockchain.service';
 import { CoinGeckoService } from './coingecko.service';
 import { EcService } from './ec.service';
 
-const SECONDS_PER_YEAR = 31_536_000; // 365 * 24 * 60 * 60
+const BLOCKS_PER_YEAR = 2_613_400;
+const EFFECTIVE_BALANCE_PER_VALIDATOR = 32;
 
 export interface CurrentAprResponse {
   apr: number | null;
@@ -29,55 +31,160 @@ export class AprCalculationService {
     this.logger.log('AprCalculationService constructed');
   }
 
-  private parseWeiFromNumeric(value: string): bigint {
-    const trimmed = value.trim();
-    if (!/^\d+(\.\d+)?$/.test(trimmed)) {
-      throw new Error(`Invalid numeric value: "${value}"`);
-    }
+  /**
+   * Latest APR formula:
+   * APR% = ((F / 1e18) * (EB / 32) * B * P_ETH) / (S * P_SSV) * 100
+   */
+  private computeAprFromInputs(
+    networkFeeWei: bigint,
+    effectiveBalanceEth: string,
+    totalEligibleSsvStaked: number,
+    priceEth: number,
+    priceSsv: number,
+    formulaName: 'APR' | 'APR_PROJECTED'
+  ): number | null {
+    const feeEth = Number(ethers.formatEther(networkFeeWei));
+    const effectiveBalance = Number(effectiveBalanceEth);
 
-    const [whole, fraction = ''] = trimmed.split('.');
-    if (fraction.length > 0 && /[^0]/.test(fraction)) {
+    if (!Number.isFinite(feeEth) || feeEth < 0) {
       this.logger.warn(
-        `Fractional wei detected in accEthPerShare, truncating: "${value}"`
+        `${formulaName}: invalid network fee (wei=${networkFeeWei.toString()})`
       );
+      return null;
     }
 
-    return BigInt(whole);
+    if (!Number.isFinite(effectiveBalance) || effectiveBalance < 0) {
+      this.logger.warn(
+        `${formulaName}: invalid effective balance: "${effectiveBalanceEth}"`
+      );
+      return null;
+    }
+
+    if (
+      !Number.isFinite(priceEth) ||
+      !Number.isFinite(priceSsv) ||
+      priceEth <= 0 ||
+      priceSsv <= 0
+    ) {
+      this.logger.warn(
+        `${formulaName}: invalid prices. priceEth=${priceEth}, priceSsv=${priceSsv}`
+      );
+      return null;
+    }
+
+    const denominator = totalEligibleSsvStaked * priceSsv;
+    if (!Number.isFinite(denominator) || denominator <= 0) {
+      this.logger.warn(
+        `${formulaName}: invalid denominator. totalEligibleSsvStaked=${totalEligibleSsvStaked}, priceSsv=${priceSsv}`
+      );
+      return null;
+    }
+
+    const apr =
+      ((feeEth *
+        (effectiveBalance / EFFECTIVE_BALANCE_PER_VALIDATOR) *
+        BLOCKS_PER_YEAR *
+        priceEth) /
+        denominator) *
+      100;
+
+    if (!Number.isFinite(apr)) {
+      this.logger.warn(`${formulaName}: calculated APR is not finite`);
+      return null;
+    }
+
+    return apr;
+  }
+
+  private async computeCurrentAndProjectedApr(
+    networkFeeWei: bigint,
+    priceEth: number,
+    priceSsv: number
+  ): Promise<{ apr: number | null; aprProjected: number | null }> {
+    try {
+      // EC validators endpoint is gwei; EcService converts it to ETH.
+      const [
+        totalStakedEth,
+        clustersEffectiveBalanceEth,
+        validatorsEffectiveBalanceEth
+      ] = await Promise.all([
+        this.blockchainService.getTotalStaked(),
+        this.ecService.getClustersEffectiveBalance(),
+        this.ecService.getValidatorsEffectiveBalance()
+      ]);
+
+      const totalEligibleSsvStaked = Number(totalStakedEth);
+      if (
+        !Number.isFinite(totalEligibleSsvStaked) ||
+        totalEligibleSsvStaked <= 0
+      ) {
+        this.logger.warn(
+          `Invalid normalized totalStaked value from contract: ${totalStakedEth}`
+        );
+        return { apr: null, aprProjected: null };
+      }
+
+      const apr = this.computeAprFromInputs(
+        networkFeeWei,
+        clustersEffectiveBalanceEth,
+        totalEligibleSsvStaked,
+        priceEth,
+        priceSsv,
+        'APR'
+      );
+
+      const aprProjected = this.computeAprFromInputs(
+        networkFeeWei,
+        validatorsEffectiveBalanceEth,
+        totalEligibleSsvStaked,
+        priceEth,
+        priceSsv,
+        'APR_PROJECTED'
+      );
+
+      return { apr, aprProjected };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? error.stack : undefined;
+      this.logger.warn(
+        `Failed to fetch effective balances for APR computation: ${message}`
+      );
+      if (stack) {
+        this.logger.debug(`Stack trace: ${stack}`);
+      }
+      return { apr: null, aprProjected: null };
+    }
   }
 
   /**
-   * Scheduled job to collect APR sample every 24 hours
-   * Default cron: 0 0 * * * (every day at midnight UTC)
+   * Scheduled job to collect APR sample every 3 hours.
+   * Cron expression runs at minute 0 every third hour.
    */
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  @Cron('0 */3 * * *')
   async collectAprSample(): Promise<AprSample> {
     try {
-      const [accEthPerShare, prices] = await Promise.all([
-        this.blockchainService.getAccEthPerShare(),
+      const [networkFeeWei, prices] = await Promise.all([
+        this.blockchainService.getNetworkFee(),
         this.coinGeckoService.getPrices()
       ]);
 
       const timestamp = new Date();
 
-      const aprResult = await this.computeApr(
-        accEthPerShare,
+      const { apr, aprProjected } = await this.computeCurrentAndProjectedApr(
+        networkFeeWei,
         prices.ethPrice,
-        prices.ssvPrice,
-        timestamp
+        prices.ssvPrice
       );
-      const apr = aprResult.apr;
-
-      const aprProjected = await this.getProjectedApr(apr);
 
       const sample = this.aprSampleRepository.create({
         timestamp,
-        accEthPerShare: accEthPerShare.toString(),
+        networkFeeWei: networkFeeWei.toString(),
         ethPrice: prices.ethPrice.toString(),
         ssvPrice: prices.ssvPrice.toString(),
         currentApr: apr !== null ? apr.toFixed(2) : null,
         aprProjected: aprProjected !== null ? aprProjected.toFixed(2) : null,
-        deltaIndex: aprResult.deltaIndex,
-        deltaTime: aprResult.deltaTime
+        deltaIndex: null,
+        deltaTime: null
       });
 
       const savedSample = await this.aprSampleRepository.save(sample);
@@ -92,175 +199,6 @@ export class AprCalculationService {
       }
       throw error;
     }
-  }
-
-  /**
-   * Compute APR from accEthPerShare and token prices
-   * Formula:
-   * APR = ((ΔIndex / (1e18 × ΔTime)) × SECONDS_PER_YEAR) × (priceEth / priceSsv) × 100
-   */
-  private async computeApr(
-    accEthPerShare: bigint,
-    priceEth: number,
-    priceSsv: number,
-    timestamp: Date
-  ): Promise<{
-    apr: number | null;
-    deltaIndex: string | null;
-    deltaTime: number | null;
-  }> {
-    if (!Number.isFinite(priceEth) || !Number.isFinite(priceSsv)) {
-      this.logger.warn(
-        `Invalid price data. priceEth=${priceEth} (isFinite: ${Number.isFinite(priceEth)}), priceSsv=${priceSsv} (isFinite: ${Number.isFinite(priceSsv)})`
-      );
-      return { apr: null, deltaIndex: null, deltaTime: null };
-    }
-
-    if (priceEth <= 0 || priceSsv <= 0) {
-      this.logger.warn(
-        `Non-positive price data. priceEth=${priceEth}, priceSsv=${priceSsv}`
-      );
-    }
-
-    const latestSample = await this.getLatestSample();
-    if (!latestSample) {
-      this.logger.warn(
-        'computeApr(): no previous sample found, cannot compute delta-based APR'
-      );
-      return { apr: null, deltaIndex: null, deltaTime: null };
-    }
-
-    let previousIndex: bigint;
-    try {
-      previousIndex = this.parseWeiFromNumeric(latestSample.accEthPerShare);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.warn(
-        `computeApr(): failed to parse previous accEthPerShare "${latestSample.accEthPerShare}": ${message}`
-      );
-      return { apr: null, deltaIndex: null, deltaTime: null };
-    }
-
-    const deltaIndex = accEthPerShare - previousIndex;
-    const deltaTimeMs = timestamp.getTime() - latestSample.timestamp.getTime();
-    if (!Number.isFinite(deltaTimeMs) || deltaTimeMs <= 0) {
-      return { apr: null, deltaIndex: null, deltaTime: null };
-    }
-
-    const deltaTimeSeconds = deltaTimeMs / 1000;
-
-    const priceRatio = priceEth / priceSsv;
-
-    if (deltaIndex > BigInt(Number.MAX_SAFE_INTEGER)) {
-      this.logger.warn(
-        `computeApr(): deltaIndex exceeds MAX_SAFE_INTEGER; precision may be lost. deltaIndex=${deltaIndex.toString()}`
-      );
-    }
-
-    const deltaIndexEth = Number(deltaIndex) / 1e18;
-    const ratePerSecond = deltaIndexEth / deltaTimeSeconds;
-
-    const apr = ratePerSecond * SECONDS_PER_YEAR * priceRatio * 100;
-
-    if (!Number.isFinite(apr)) {
-      this.logger.warn(
-        `Calculated APR is not finite: ${apr}. Inputs were: ratePerSecond=${ratePerSecond}, priceRatio=${priceRatio}`
-      );
-      return { apr: null, deltaIndex: null, deltaTime: null };
-    }
-
-    return {
-      apr,
-      deltaIndex: deltaIndex.toString(),
-      deltaTime: deltaTimeMs
-    };
-  }
-
-  /**
-   * Compute projected APR using effective balances.
-   * Formula: aprProjected = apr × (clustersEffectiveBalance / validatorsEffectiveBalance)
-   */
-  private computeAprProjected(
-    apr: number | null,
-    clustersEffectiveBalance: string,
-    validatorsEffectiveBalance: string
-  ): number | null {
-    if (apr === null) {
-      this.logger.warn('computeAprProjected(): apr is null, returning null');
-      return null;
-    }
-
-    const clusters = Number(clustersEffectiveBalance);
-    const validators = Number(validatorsEffectiveBalance);
-
-    if (!Number.isFinite(clusters) || !Number.isFinite(validators)) {
-      this.logger.warn(
-        `Invalid effective balance data. clusters=${clusters} (isFinite: ${Number.isFinite(clusters)}), validators=${validators} (isFinite: ${Number.isFinite(validators)})`
-      );
-      return null;
-    }
-
-    if (validators <= 0) {
-      this.logger.warn(
-        `Invalid validatorsEffectiveBalance: ${validatorsEffectiveBalance} -> parsed: ${validators}`
-      );
-      return null;
-    }
-
-    const ratio = clusters / validators;
-
-    const projected = apr * ratio;
-
-    if (!Number.isFinite(projected)) {
-      this.logger.warn(
-        `Calculated projected APR is not finite: ${projected}. apr=${apr}, ratio=${ratio}`
-      );
-      return null;
-    }
-
-    return projected;
-  }
-
-  private async getProjectedApr(apr: number | null): Promise<number | null> {
-    if (apr === null) {
-      this.logger.warn(
-        'getProjectedApr(): apr is null, skipping projected APR calculation'
-      );
-      return null;
-    }
-
-    try {
-      const [clustersEffectiveBalance, validatorsEffectiveBalance] =
-        await Promise.all([
-          this.ecService.getClustersEffectiveBalance(),
-          this.ecService.getValidatorsEffectiveBalance()
-        ]);
-
-      return this.computeAprProjected(
-        apr,
-        clustersEffectiveBalance,
-        validatorsEffectiveBalance
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const stack = error instanceof Error ? error.stack : undefined;
-      this.logger.warn(`Failed to compute projected APR: ${message}`);
-      if (stack) {
-        this.logger.debug(`Stack trace: ${stack}`);
-      }
-      return null;
-    }
-  }
-
-  /**
-   * Get the latest APR sample
-   */
-  async getLatestSample(): Promise<AprSample | null> {
-    return await this.aprSampleRepository
-      .createQueryBuilder('sample')
-      .orderBy('sample.timestamp', 'DESC')
-      .limit(1)
-      .getOne();
   }
 
   /**
@@ -279,20 +217,16 @@ export class AprCalculationService {
    */
   async getCurrentApr(): Promise<CurrentAprResponse | null> {
     try {
-      const [accEthPerShare, prices] = await Promise.all([
-        this.blockchainService.getAccEthPerShare(),
+      const [networkFeeWei, prices] = await Promise.all([
+        this.blockchainService.getNetworkFee(),
         this.coinGeckoService.getPrices()
       ]);
 
-      const aprResult = await this.computeApr(
-        accEthPerShare,
+      const { apr, aprProjected } = await this.computeCurrentAndProjectedApr(
+        networkFeeWei,
         prices.ethPrice,
-        prices.ssvPrice,
-        new Date()
+        prices.ssvPrice
       );
-      const apr = aprResult.apr;
-
-      const aprProjected = await this.getProjectedApr(apr);
 
       const lastUpdated = Date.now();
 

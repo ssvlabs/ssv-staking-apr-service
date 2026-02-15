@@ -27,7 +27,9 @@ export class CoinGeckoService {
       this.configService.get<string>('COINGECKO_API_URL') ||
       'https://api.coingecko.com/api/v3';
 
-    this.logger.log(`CoinGeckoService initialized with baseUrl: ${this.baseUrl}`);
+    this.logger.log(
+      `CoinGeckoService initialized with baseUrl: ${this.baseUrl}`
+    );
 
     this.axiosInstance = axios.create({
       baseURL: this.baseUrl,
@@ -46,7 +48,6 @@ export class CoinGeckoService {
    * Get current spot prices for ETH and SSV
    */
   private async getSpotPrices(): Promise<TokenPrices> {
-    const requestUrl = `${this.baseUrl}/simple/price`;
     const params = { ids: 'ethereum,ssv-network', vs_currencies: 'usd' };
 
     const startTime = Date.now();
@@ -65,9 +66,7 @@ export class CoinGeckoService {
         this.logger.error(
           `Missing price data from CoinGecko. ethPrice type: ${typeof ethPrice}, ssvPrice type: ${typeof ssvPrice}`
         );
-        this.logger.error(
-          `Full response: ${JSON.stringify(response.data)}`
-        );
+        this.logger.error(`Full response: ${JSON.stringify(response.data)}`);
         throw new Error('Missing price data from CoinGecko');
       }
 
