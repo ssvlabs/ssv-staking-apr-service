@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateAprSamplesTable20260209133000
-  implements MigrationInterface
-{
+export class CreateAprSamplesTable20260209133000 implements MigrationInterface {
   name = 'CreateAprSamplesTable20260209133000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
@@ -29,9 +27,7 @@ export class CreateAprSamplesTable20260209133000
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(
-      'DROP INDEX IF EXISTS "IDX_apr_samples_timestamp"'
-    );
+    await queryRunner.query('DROP INDEX IF EXISTS "IDX_apr_samples_timestamp"');
     await queryRunner.query('DROP TABLE IF EXISTS "apr_samples"');
   }
 }
