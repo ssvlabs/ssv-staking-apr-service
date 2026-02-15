@@ -60,10 +60,7 @@ export class EcService {
       return whole.toString();
     }
 
-    const fractionStr = fraction
-      .toString()
-      .padStart(9, '0')
-      .replace(/0+$/, '');
+    const fractionStr = fraction.toString().padStart(9, '0').replace(/0+$/, '');
 
     return `${whole.toString()}.${fractionStr}`;
   }

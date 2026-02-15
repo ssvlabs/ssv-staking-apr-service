@@ -32,7 +32,7 @@ async function bootstrap() {
     `EXPLORER_CENTER_HOODI: ${process.env.EXPLORER_CENTER_HOODI || 'not set'}`
   );
   logger.log(
-    `APR_CALCULATION_CRON: ${process.env.APR_CALCULATION_CRON || 'not set (using EVERY_DAY_AT_MIDNIGHT)'}`
+    `APR_CALCULATION_CRON: ${process.env.APR_CALCULATION_CRON || 'not set (using every 3 hours)'}`
   );
 
   logger.log('Creating NestJS application...');
