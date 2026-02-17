@@ -45,26 +45,6 @@ export class EcService {
     }
   }
 
-  private gweiToEthString(value: string): string {
-    const trimmed = value.trim();
-    if (!/^\d+$/.test(trimmed)) {
-      throw new Error(`Invalid gwei value: "${value}"`);
-    }
-
-    const gwei = BigInt(trimmed);
-    const base = 1_000_000_000n;
-    const whole = gwei / base;
-    const fraction = gwei % base;
-
-    if (fraction === 0n) {
-      return whole.toString();
-    }
-
-    const fractionStr = fraction.toString().padStart(9, '0').replace(/0+$/, '');
-
-    return `${whole.toString()}.${fractionStr}`;
-  }
-
   async getValidatorsEffectiveBalance(): Promise<string> {
     this.ensureConfigured();
 
@@ -87,8 +67,7 @@ export class EcService {
         throw new Error('Missing total_effective_balance from EC');
       }
 
-      const ethValue = this.gweiToEthString(value);
-      return ethValue;
+      return value;
     } catch (error) {
       const elapsed = Date.now() - startTime;
       const message = error instanceof Error ? error.message : String(error);
