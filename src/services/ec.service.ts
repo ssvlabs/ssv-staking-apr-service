@@ -9,7 +9,8 @@ interface Cluster {
   hash: string;
 }
 
-interface ValidatorsEffectiveBalanceResponse {
+
+interface OracleClustersEffectiveBalanceResponse {
   epoch: number;
   referenceBlock: number;
   merkleRoot: string;
@@ -18,7 +19,8 @@ interface ValidatorsEffectiveBalanceResponse {
   layers: string[];
 }
 
-interface ClustersEffectiveBalanceResponse {
+
+interface EcClustersEffectiveBalanceResponse {
   totalEffectiveBalance: string;
 }
 
@@ -72,7 +74,7 @@ export class EcService {
     const endpoint = '/api/v1/commit?full=true';
     const startTime = Date.now();
     try {
-      const response = await this.oracleAxiosInstance.get<ValidatorsEffectiveBalanceResponse>(endpoint);
+      const response = await this.oracleAxiosInstance.get<OracleClustersEffectiveBalanceResponse>(endpoint);
       const clusters = response.data?.clusters;
       if (!Array.isArray(clusters)) {
         const msg = `Oracle response missing clusters array. Data: ${JSON.stringify(response.data)}`;
@@ -109,7 +111,7 @@ export class EcService {
     const endpoint = '/clusters/effective-balance';
     const startTime = Date.now();
     try {
-      const response = await this.axiosInstance.get<ClustersEffectiveBalanceResponse>(endpoint);
+      const response = await this.axiosInstance.get<EcClustersEffectiveBalanceResponse>(endpoint);
       const value = response.data?.totalEffectiveBalance;
       if (typeof value !== 'string') {
         const msg = `EC response missing totalEffectiveBalance. Data: ${JSON.stringify(response.data)}`;
