@@ -22,6 +22,7 @@ async function bootstrap() {
   logger.log(`DATABASE_NAME: ${process.env.DATABASE_NAME || 'not set'}`);
   logger.log(`DATABASE_USER: ${process.env.DATABASE_USER || 'not set'}`);
   logger.log(`RPC_URL: ${process.env.RPC_URL || 'not set'}`);
+  logger.log(`ORACLE_URL: ${process.env.ORACLE_URL || 'not set'}`);
   logger.log(
     `VIEWS_CONTRACT_ADDRESS: ${process.env.VIEWS_CONTRACT_ADDRESS || 'not set'}`
   );
@@ -83,3 +84,4 @@ async function bootstrap() {
   logger.log(`Health check: http://localhost:${port}/api/apr/health`);
 }
 void bootstrap();
+
