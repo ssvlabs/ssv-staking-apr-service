@@ -66,110 +66,69 @@ export class EcService {
     }
   }
 
-  async getValidatorsEffectiveBalance(): Promise<string> {
-    this.ensureConfigured();
 
+  async getOracleClustersEffectiveBalance(): Promise<string> {
+    this.ensureConfigured();
     const endpoint = '/api/v1/commit?full=true';
     const startTime = Date.now();
-
     try {
       const response = await this.oracleAxiosInstance.get<ValidatorsEffectiveBalanceResponse>(endpoint);
       const clusters = response.data?.clusters;
-
       if (!Array.isArray(clusters)) {
-        this.logger.error(
-          `Missing or invalid clusters array from Oracle response. Got: ${JSON.stringify(response.data)}`
-        );
-        throw new Error('Missing clusters array from Oracle');
+        const msg = `Oracle response missing clusters array. Data: ${JSON.stringify(response.data)}`;
+        this.logger.error(msg);
+        throw new Error(msg);
       }
-
       const total = clusters.reduce((sum, cluster) => {
         if (typeof cluster.effectiveBalance !== 'number') {
-          this.logger.error(
-            `Invalid effectiveBalance in cluster: ${JSON.stringify(cluster)}`
-          );
-          throw new Error('Invalid effectiveBalance in cluster');
+          const msg = `Oracle cluster missing/invalid effectiveBalance: ${JSON.stringify(cluster)}`;
+          this.logger.error(msg);
+          throw new Error(msg);
         }
         return sum + cluster.effectiveBalance;
       }, 0);
-
       return total.toString();
     } catch (error) {
       const elapsed = Date.now() - startTime;
-      const message = error instanceof Error ? error.message : String(error);
-      const stack = error instanceof Error ? error.stack : undefined;
-
-      this.logger.error(
-        `Failed to fetch validators effective balance after ${elapsed}ms: ${message}`
-      );
-
+      let details = '';
       if (axios.isAxiosError(error)) {
-        this.logger.error(
-          `Axios error - status: ${error.response?.status}, statusText: ${error.response?.statusText}`
-        );
-        this.logger.error(
-          `Response data: ${JSON.stringify(error.response?.data)}`
-        );
-        this.logger.debug(`Request config URL: ${error.config?.url}`);
-        this.logger.debug(`Request baseURL: ${error.config?.baseURL}`);
+        details = `AxiosError: status=${error.response?.status}, statusText=${error.response?.statusText}, url=${error.config?.url}, baseURL=${error.config?.baseURL}, response=${JSON.stringify(error.response?.data)}`;
+      } else if (error instanceof Error) {
+        details = error.stack || error.message;
+      } else {
+        details = String(error);
       }
-
-      if (stack) {
-        this.logger.debug(`Stack trace: ${stack}`);
-      }
-
-      throw error;
+      this.logger.error(`Failed to fetch Oracle clusters effective balance after ${elapsed}ms. Details: ${details}`);
+      throw new Error(`Failed to fetch Oracle clusters effective balance: ${details}`);
     }
   }
 
-  async getClustersEffectiveBalance(): Promise<string> {
+
+  async getEcClustersEffectiveBalance(): Promise<string> {
     this.ensureConfigured();
-
     const endpoint = '/clusters/effective-balance';
-
     const startTime = Date.now();
-
     try {
-      const response =
-        await this.axiosInstance.get<ClustersEffectiveBalanceResponse>(
-          endpoint
-        );
-
+      const response = await this.axiosInstance.get<ClustersEffectiveBalanceResponse>(endpoint);
       const value = response.data?.totalEffectiveBalance;
-
       if (typeof value !== 'string') {
-        this.logger.error(
-          `Missing totalEffectiveBalance from EC response. Got: ${JSON.stringify(response.data)}`
-        );
-        throw new Error('Missing totalEffectiveBalance from EC');
+        const msg = `EC response missing totalEffectiveBalance. Data: ${JSON.stringify(response.data)}`;
+        this.logger.error(msg);
+        throw new Error(msg);
       }
-
       return value;
     } catch (error) {
       const elapsed = Date.now() - startTime;
-      const message = error instanceof Error ? error.message : String(error);
-      const stack = error instanceof Error ? error.stack : undefined;
-
-      this.logger.error(
-        `Failed to fetch clusters effective balance after ${elapsed}ms: ${message}`
-      );
-
+      let details = '';
       if (axios.isAxiosError(error)) {
-        this.logger.error(
-          `Axios error - status: ${error.response?.status}, statusText: ${error.response?.statusText}`
-        );
-        this.logger.error(
-          `Response data: ${JSON.stringify(error.response?.data)}`
-        );
-        this.logger.debug(`Request config URL: ${error.config?.url}`);
-        this.logger.debug(`Request baseURL: ${error.config?.baseURL}`);
+        details = `AxiosError: status=${error.response?.status}, statusText=${error.response?.statusText}, url=${error.config?.url}, baseURL=${error.config?.baseURL}, response=${JSON.stringify(error.response?.data)}`;
+      } else if (error instanceof Error) {
+        details = error.stack || error.message;
+      } else {
+        details = String(error);
       }
-
-      if (stack) {
-        this.logger.debug(`Stack trace: ${stack}`);
-      }
-
-      throw error;
+      this.logger.error(`Failed to fetch EC clusters effective balance after ${elapsed}ms. Details: ${details}`);
+      throw new Error(`Failed to fetch EC clusters effective balance: ${details}`);
     }
   }
 }

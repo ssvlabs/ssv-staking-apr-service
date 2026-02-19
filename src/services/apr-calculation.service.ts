@@ -105,12 +105,12 @@ export class AprCalculationService {
       // EC validators endpoint is gwei; EcService converts it to ETH.
       const [
         totalStakedEth,
-        clustersEffectiveBalanceEth,
-        validatorsEffectiveBalanceEth
+        ecClustersEffectiveBalanceEth,
+        oracleClustersEffectiveBalanceEth
       ] = await Promise.all([
         this.blockchainService.getTotalStaked(),
-        this.ecService.getClustersEffectiveBalance(),
-        this.ecService.getValidatorsEffectiveBalance()
+        this.ecService.getEcClustersEffectiveBalance(),
+        this.ecService.getOracleClustersEffectiveBalance()
       ]);
 
       const totalEligibleSsvStaked = Number(totalStakedEth);
@@ -126,7 +126,7 @@ export class AprCalculationService {
 
       const apr = this.computeAprFromInputs(
         networkFeeWei,
-        clustersEffectiveBalanceEth,
+        ecClustersEffectiveBalanceEth,
         totalEligibleSsvStaked,
         priceEth,
         priceSsv,
@@ -135,7 +135,7 @@ export class AprCalculationService {
 
       const aprProjected = this.computeAprFromInputs(
         networkFeeWei,
-        validatorsEffectiveBalanceEth,
+        oracleClustersEffectiveBalanceEth,
         totalEligibleSsvStaked,
         priceEth,
         priceSsv,
