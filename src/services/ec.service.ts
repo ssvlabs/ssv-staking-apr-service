@@ -2,11 +2,25 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
 
-interface ValidatorsEffectiveBalanceResponse {
-  total_effective_balance: string;
+
+interface Cluster {
+  clusterId: string;
+  effectiveBalance: number;
+  hash: string;
 }
 
-interface ClustersEffectiveBalanceResponse {
+
+interface OracleClustersEffectiveBalanceResponse {
+  epoch: number;
+  referenceBlock: number;
+  merkleRoot: string;
+  txHash: string;
+  clusters: Cluster[];
+  layers: string[];
+}
+
+
+interface EcClustersEffectiveBalanceResponse {
   totalEffectiveBalance: string;
 }
 
@@ -14,18 +28,27 @@ interface ClustersEffectiveBalanceResponse {
 export class EcService {
   private readonly logger = new Logger(EcService.name);
   private readonly axiosInstance: AxiosInstance;
+  private readonly oracleAxiosInstance: AxiosInstance;
   private readonly baseUrl: string;
+  private readonly oracleUrl: string;
 
   constructor(private configService: ConfigService) {
     this.baseUrl =
       this.configService.get<string>('EXPLORER_CENTER_HOODI') || '';
+    this.oracleUrl =
+      this.configService.get<string>('ORACLE_URL') || '';
 
     this.logger.log(
-      `EcService initialized. EXPLORER_CENTER_HOODI: ${this.baseUrl || 'NOT SET'}`
+      `EcService initialized. EXPLORER_CENTER_HOODI: ${this.baseUrl || 'NOT SET'}, ORACLE_URL: ${this.oracleUrl || 'NOT SET'}`
     );
 
     this.axiosInstance = axios.create({
       baseURL: this.baseUrl,
+      timeout: 30000
+    });
+
+    this.oracleAxiosInstance = axios.create({
+      baseURL: this.oracleUrl,
       timeout: 30000
     });
   }
@@ -37,113 +60,78 @@ export class EcService {
       );
       throw new Error('EXPLORER_CENTER_HOODI is not configured');
     }
-    if (this.baseUrl.includes('EXPLORER_CENTER')) {
+    if (this.baseUrl.includes('EXPLORER_CENTER') || this.oracleUrl.includes('ORACLE_URL')) {
       this.logger.error(
-        `EXPLORER_CENTER_HOODI contains placeholder value: "${this.baseUrl}". Cannot make EC API calls.`
+        `EXPLORER_CENTER_HOODI contains placeholder value: "${this.baseUrl}" or ORACLE_URL contains placeholder value: "${this.oracleUrl}". Cannot make EC API calls.`
       );
-      throw new Error('EXPLORER_CENTER_HOODI is not configured');
+      throw new Error('EXPLORER_CENTER_HOODI or ORACLE_URL is not configured');
     }
   }
 
-  async getValidatorsEffectiveBalance(): Promise<string> {
+
+  async getOracleClustersEffectiveBalance(): Promise<string> {
     this.ensureConfigured();
-
-    const endpoint = '/validators/effective-balance';
-
+    const endpoint = '/api/v1/commit?full=true';
     const startTime = Date.now();
-
     try {
-      const response =
-        await this.axiosInstance.get<ValidatorsEffectiveBalanceResponse>(
-          endpoint
-        );
-
-      const value = response.data?.total_effective_balance;
-
-      if (typeof value !== 'string') {
-        this.logger.error(
-          `Missing total_effective_balance from EC response. Got: ${JSON.stringify(response.data)}`
-        );
-        throw new Error('Missing total_effective_balance from EC');
+      const response = await this.oracleAxiosInstance.get<OracleClustersEffectiveBalanceResponse>(endpoint);
+      const clusters = response.data?.clusters;
+      if (!Array.isArray(clusters)) {
+        const msg = `Oracle response missing clusters array. Data: ${JSON.stringify(response.data)}`;
+        this.logger.error(msg);
+        throw new Error(msg);
       }
-
-      return value;
+      const total = clusters.reduce((sum, cluster) => {
+        if (typeof cluster.effectiveBalance !== 'number') {
+          const msg = `Oracle cluster missing/invalid effectiveBalance: ${JSON.stringify(cluster)}`;
+          this.logger.error(msg);
+          throw new Error(msg);
+        }
+        return sum + cluster.effectiveBalance;
+      }, 0);
+      return total.toString();
     } catch (error) {
       const elapsed = Date.now() - startTime;
-      const message = error instanceof Error ? error.message : String(error);
-      const stack = error instanceof Error ? error.stack : undefined;
-
-      this.logger.error(
-        `Failed to fetch validators effective balance after ${elapsed}ms: ${message}`
-      );
-
+      let details = '';
       if (axios.isAxiosError(error)) {
-        this.logger.error(
-          `Axios error - status: ${error.response?.status}, statusText: ${error.response?.statusText}`
-        );
-        this.logger.error(
-          `Response data: ${JSON.stringify(error.response?.data)}`
-        );
-        this.logger.debug(`Request config URL: ${error.config?.url}`);
-        this.logger.debug(`Request baseURL: ${error.config?.baseURL}`);
+        details = `AxiosError: status=${error.response?.status}, statusText=${error.response?.statusText}, url=${error.config?.url}, baseURL=${error.config?.baseURL}, response=${JSON.stringify(error.response?.data)}`;
+      } else if (error instanceof Error) {
+        details = error.stack || error.message;
+      } else {
+        details = String(error);
       }
-
-      if (stack) {
-        this.logger.debug(`Stack trace: ${stack}`);
-      }
-
-      throw error;
+      this.logger.error(`Failed to fetch Oracle clusters effective balance after ${elapsed}ms. Details: ${details}`);
+      throw new Error(`Failed to fetch Oracle clusters effective balance: ${details}`);
     }
   }
 
-  async getClustersEffectiveBalance(): Promise<string> {
-    this.ensureConfigured();
 
+  async getEcClustersEffectiveBalance(): Promise<string> {
+    this.ensureConfigured();
     const endpoint = '/clusters/effective-balance';
-
     const startTime = Date.now();
-
     try {
-      const response =
-        await this.axiosInstance.get<ClustersEffectiveBalanceResponse>(
-          endpoint
-        );
-
+      const response = await this.axiosInstance.get<EcClustersEffectiveBalanceResponse>(endpoint);
       const value = response.data?.totalEffectiveBalance;
-
       if (typeof value !== 'string') {
-        this.logger.error(
-          `Missing totalEffectiveBalance from EC response. Got: ${JSON.stringify(response.data)}`
-        );
-        throw new Error('Missing totalEffectiveBalance from EC');
+        const msg = `EC response missing totalEffectiveBalance. Data: ${JSON.stringify(response.data)}`;
+        this.logger.error(msg);
+        throw new Error(msg);
       }
-
       return value;
     } catch (error) {
       const elapsed = Date.now() - startTime;
-      const message = error instanceof Error ? error.message : String(error);
-      const stack = error instanceof Error ? error.stack : undefined;
-
-      this.logger.error(
-        `Failed to fetch clusters effective balance after ${elapsed}ms: ${message}`
-      );
-
+      let details = '';
       if (axios.isAxiosError(error)) {
-        this.logger.error(
-          `Axios error - status: ${error.response?.status}, statusText: ${error.response?.statusText}`
-        );
-        this.logger.error(
-          `Response data: ${JSON.stringify(error.response?.data)}`
-        );
-        this.logger.debug(`Request config URL: ${error.config?.url}`);
-        this.logger.debug(`Request baseURL: ${error.config?.baseURL}`);
+        details = `AxiosError: status=${error.response?.status}, statusText=${error.response?.statusText}, url=${error.config?.url}, baseURL=${error.config?.baseURL}, response=${JSON.stringify(error.response?.data)}`;
+      } else if (error instanceof Error) {
+        details = error.stack || error.message;
+      } else {
+        details = String(error);
       }
-
-      if (stack) {
-        this.logger.debug(`Stack trace: ${stack}`);
-      }
-
-      throw error;
+      this.logger.error(`Failed to fetch EC clusters effective balance after ${elapsed}ms. Details: ${details}`);
+      throw new Error(`Failed to fetch EC clusters effective balance: ${details}`);
     }
   }
 }
+
