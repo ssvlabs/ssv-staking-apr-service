@@ -2,8 +2,20 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
 
+
+interface Cluster {
+  clusterId: string;
+  effectiveBalance: number;
+  hash: string;
+}
+
 interface ValidatorsEffectiveBalanceResponse {
-  total_effective_balance: string;
+  epoch: number;
+  referenceBlock: number;
+  merkleRoot: string;
+  txHash: string;
+  clusters: Cluster[];
+  layers: string[];
 }
 
 interface ClustersEffectiveBalanceResponse {
@@ -14,18 +26,27 @@ interface ClustersEffectiveBalanceResponse {
 export class EcService {
   private readonly logger = new Logger(EcService.name);
   private readonly axiosInstance: AxiosInstance;
+  private readonly oracleAxiosInstance: AxiosInstance;
   private readonly baseUrl: string;
+  private readonly oracleUrl: string;
 
   constructor(private configService: ConfigService) {
     this.baseUrl =
       this.configService.get<string>('EXPLORER_CENTER_HOODI') || '';
+    this.oracleUrl =
+      this.configService.get<string>('ORACLE_URL') || '';
 
     this.logger.log(
-      `EcService initialized. EXPLORER_CENTER_HOODI: ${this.baseUrl || 'NOT SET'}`
+      `EcService initialized. EXPLORER_CENTER_HOODI: ${this.baseUrl || 'NOT SET'}, ORACLE_URL: ${this.oracleUrl || 'NOT SET'}`
     );
 
     this.axiosInstance = axios.create({
       baseURL: this.baseUrl,
+      timeout: 30000
+    });
+
+    this.oracleAxiosInstance = axios.create({
+      baseURL: this.oracleUrl,
       timeout: 30000
     });
   }
@@ -37,37 +58,42 @@ export class EcService {
       );
       throw new Error('EXPLORER_CENTER_HOODI is not configured');
     }
-    if (this.baseUrl.includes('EXPLORER_CENTER')) {
+    if (this.baseUrl.includes('EXPLORER_CENTER') || this.oracleUrl.includes('ORACLE_URL')) {
       this.logger.error(
-        `EXPLORER_CENTER_HOODI contains placeholder value: "${this.baseUrl}". Cannot make EC API calls.`
+        `EXPLORER_CENTER_HOODI contains placeholder value: "${this.baseUrl}" or ORACLE_URL contains placeholder value: "${this.oracleUrl}". Cannot make EC API calls.`
       );
-      throw new Error('EXPLORER_CENTER_HOODI is not configured');
+      throw new Error('EXPLORER_CENTER_HOODI or ORACLE_URL is not configured');
     }
   }
 
   async getValidatorsEffectiveBalance(): Promise<string> {
     this.ensureConfigured();
 
-    const endpoint = '/validators/effective-balance';
-
+    const endpoint = '/api/v1/commit?full=true';
     const startTime = Date.now();
 
     try {
-      const response =
-        await this.axiosInstance.get<ValidatorsEffectiveBalanceResponse>(
-          endpoint
-        );
+      const response = await this.oracleAxiosInstance.get<ValidatorsEffectiveBalanceResponse>(endpoint);
+      const clusters = response.data?.clusters;
 
-      const value = response.data?.total_effective_balance;
-
-      if (typeof value !== 'string') {
+      if (!Array.isArray(clusters)) {
         this.logger.error(
-          `Missing total_effective_balance from EC response. Got: ${JSON.stringify(response.data)}`
+          `Missing or invalid clusters array from Oracle response. Got: ${JSON.stringify(response.data)}`
         );
-        throw new Error('Missing total_effective_balance from EC');
+        throw new Error('Missing clusters array from Oracle');
       }
 
-      return value;
+      const total = clusters.reduce((sum, cluster) => {
+        if (typeof cluster.effectiveBalance !== 'number') {
+          this.logger.error(
+            `Invalid effectiveBalance in cluster: ${JSON.stringify(cluster)}`
+          );
+          throw new Error('Invalid effectiveBalance in cluster');
+        }
+        return sum + cluster.effectiveBalance;
+      }, 0);
+
+      return total.toString();
     } catch (error) {
       const elapsed = Date.now() - startTime;
       const message = error instanceof Error ? error.message : String(error);
@@ -147,3 +173,4 @@ export class EcService {
     }
   }
 }
+
