@@ -8,7 +8,7 @@ This file guides contributors and coding agents working in this repository. Read
 
 ## Project Structure & Module Organization
 
-`src/controllers/` contains HTTP endpoints. `src/services/` contains APR logic plus external integrations such as blockchain, CoinGecko, and explorer-center clients. `src/entities/` defines TypeORM entities, `src/config/` holds database setup, and `src/migrations/` contains schema migrations. Bootstrap lives in [`src/main.ts`] and [`src/app.module.ts`]. E2E tests live in `test/`.
+`src/controllers/` contains HTTP endpoints. `src/services/` contains APR logic plus external integrations such as blockchain, CoinGecko, and explorer-center clients. `src/entities/` defines TypeORM entities, `src/config/` holds database setup, and `src/migrations/` contains schema migrations. Bootstrap lives in `src/main.ts` and `src/app.module.ts`. E2E tests live in `test/`.
 
 ## Build, Test, and Development Commands
 
@@ -31,7 +31,7 @@ Use TypeScript with NestJS DI patterns and keep modules small and explicit. Foll
 
 ## Testing Guidelines
 
-Jest is the active test runner. Put unit tests beside implementation as `*.spec.ts`; keep API and wiring coverage under `test/`. Add or update tests when changing APR formulas, controller response contracts, cron collection behavior, or integration failure handling. The existing [`test/app.e2e-spec.ts`](/Users/nirfinz/Desktop/Dev/ssv-staking-apr-service/test/app.e2e-spec.ts) is still the Nest starter and should be replaced as real route coverage expands.
+Jest is the active test runner. Put unit tests beside implementation as `*.spec.ts`; keep API and wiring coverage under `test/`. Add or update tests when changing APR formulas, controller response contracts, cron collection behavior, or integration failure handling. The existing `test/app.e2e-spec.ts` is still the Nest starter and should be replaced as real route coverage expands.
 
 ## Commit & Pull Request Guidelines
 
@@ -43,7 +43,7 @@ Runtime configuration is environment-driven. Copy `.env.example` to `.env` and v
 
 ## References
 
-- [`README.md`] — service overview and API usage
-- [`QUICKSTART.md`] — local setup steps
-- [`FLOWS.md`] — contract flow definitions and implementation checks
-- [`SPEC.md`] — technical specification and accounting rules
+- `README.md` — service overview and API usage
+- `QUICKSTART.md` — local setup steps
+- `FLOWS.md` — contract flow definitions and implementation checks
+- `SPEC.md` — technical specification and accounting rules
