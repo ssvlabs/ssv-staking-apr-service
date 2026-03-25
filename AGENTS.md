@@ -33,6 +33,7 @@ Use TypeScript with NestJS DI patterns and keep modules small and explicit. Foll
 
 Jest is the active test runner. Put unit tests beside implementation as `*.spec.ts`; keep API and wiring coverage under `test/`. Add or update tests when changing APR formulas, controller response contracts, cron collection behavior, or integration failure handling. The existing `test/app.e2e-spec.ts` is still the Nest starter and should be replaced as real route coverage expands.
 
+
 ## Commit & Pull Request Guidelines
 
 Recent history uses Conventional Commit prefixes such as `feat:` and `fix:`. Keep subjects short and imperative, for example `feat: add oracle fallback for effective balance`. PRs should summarize behavior changes, note required env or migration updates, link the relevant issue, and include example request/response payloads when API output changes.
@@ -47,3 +48,4 @@ Runtime configuration is environment-driven. Copy `.env.example` to `.env` and v
 - `QUICKSTART.md` — local setup steps
 - `FLOWS.md` — contract flow definitions and implementation checks
 - `SPEC.md` — technical specification and accounting rules
+
