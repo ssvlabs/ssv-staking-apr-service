@@ -7,14 +7,16 @@ import { AprSample } from './entities/apr-sample.entity';
 import { AprCalculationService } from './services/apr-calculation.service';
 import { BlockchainService } from './services/blockchain.service';
 import { CoinGeckoService } from './services/coingecko.service';
-import { EcService } from './services/ec.service';
+import { ExplorerCenterService } from './services/explorer-center.service';
+import { OracleService } from './services/oracle.service';
 import { getDatabaseConfig } from './config/database.config';
+import { validateEnvironment } from './config/env.validation';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      ignoreEnvFile: true
+      validate: validateEnvironment
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -29,7 +31,8 @@ import { getDatabaseConfig } from './config/database.config';
     AprCalculationService,
     BlockchainService,
     CoinGeckoService,
-    EcService
+    ExplorerCenterService,
+    OracleService
   ]
 })
 export class AppModule {}
