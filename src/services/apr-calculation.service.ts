@@ -6,7 +6,8 @@ import { ethers } from 'ethers';
 import { AprSample } from '../entities/apr-sample.entity';
 import { BlockchainService } from './blockchain.service';
 import { CoinGeckoService } from './coingecko.service';
-import { EcService } from './ec.service';
+import { ExplorerCenterService } from './explorer-center.service';
+import { OracleService } from './oracle.service';
 
 const BLOCKS_PER_YEAR = 2_613_400;
 const EFFECTIVE_BALANCE_PER_VALIDATOR = 32;
@@ -26,7 +27,8 @@ export class AprCalculationService {
     private aprSampleRepository: Repository<AprSample>,
     private blockchainService: BlockchainService,
     private coinGeckoService: CoinGeckoService,
-    private ecService: EcService
+    private explorerCenterService: ExplorerCenterService,
+    private oracleService: OracleService
   ) {
     this.logger.log('AprCalculationService constructed');
   }
@@ -102,15 +104,15 @@ export class AprCalculationService {
     priceSsv: number
   ): Promise<{ apr: number | null; aprProjected: number | null }> {
     try {
-      // EC validators endpoint is gwei; EcService converts it to ETH.
+      // Explorer Center validators endpoint is gwei and Oracle provides projected balances.
       const [
         totalStakedEth,
         ecClustersEffectiveBalanceEth,
         oracleClustersEffectiveBalanceEth
       ] = await Promise.all([
         this.blockchainService.getTotalStaked(),
-        this.ecService.getEcClustersEffectiveBalance(),
-        this.ecService.getOracleClustersEffectiveBalance()
+        this.explorerCenterService.getClustersEffectiveBalance(),
+        this.oracleService.getClustersEffectiveBalance()
       ]);
 
       const totalEligibleSsvStaked = Number(totalStakedEth);
