@@ -1,6 +1,10 @@
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
-import { AprSample } from '../entities/apr-sample.entity';
+import {
+  AprSample,
+  CssvSnapshotRun,
+  CssvSnapshotWallet
+} from '../entities';
 
 export const getDatabaseConfig = (
   configService: ConfigService
@@ -11,9 +15,9 @@ export const getDatabaseConfig = (
   username: configService.get<string>('DATABASE_USER'),
   password: configService.get<string>('DATABASE_PASSWORD'),
   database: configService.get<string>('DATABASE_NAME'),
-  entities: [AprSample],
+  entities: [AprSample, CssvSnapshotRun, CssvSnapshotWallet],
   migrations: [__dirname + '/../migrations/*.{ts,js}'],
   migrationsRun: configService.get<string>('TYPEORM_MIGRATIONS_RUN') === 'true',
-  synchronize: configService.get<string>('NODE_ENV') === 'development',
+  synchronize: false,
   logging: configService.get<string>('NODE_ENV') === 'development'
 });
