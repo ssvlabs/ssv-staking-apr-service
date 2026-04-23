@@ -592,13 +592,23 @@ If a bad day must be repaired:
 
 ## Validation
 
-Post-commit validation is **not committed v1 scope**. It is a stretch goal.
+Implemented behavior:
 
-If added later, run it after DB commit as warn-only monitoring:
+- run validation asynchronously after snapshot commit
+- do **not** block the write path on validation completion
+- emit warn logs only; validation is not a publish gate
+- skip validation for structurally empty bootstrap-era snapshots:
+  - `wallet_count = 0`
+  - `total_staked_wei_ssv = 0`
+
+Current checks:
 
 - `sum(wallet.balance_wei_ssv where balance > 0) == totalStaked()` using explicit RPC block tag = `snapshotStateBlock`
-- sampled wallet balances match `stakedBalanceOf(wallet)` using explicit RPC block tag = `snapshotStateBlock`
+- sampled wallet balances match `balanceOf(wallet)` using explicit RPC block tag = `snapshotStateBlock`
 - sampled wallet previews match `previewClaimableEth(wallet)` using explicit RPC block tag = `snapshotStateBlock`
+
+Stretch follow-up still not implemented:
+
 - sampled claim txs satisfy:
 
 ```text
@@ -609,15 +619,36 @@ If validation fails:
 
 - keep the committed snapshot as-is
 - emit warn logs with enough context to investigate the mismatch
+- include `repairFromSnapshotDate=<snapshotDate>` in mismatch logs
 - treat validation as anomaly detection, not a publish gate
+
+## RPC Resilience
+
+The committed implementation retries transient RPC failures with exponential backoff.
+
+Current defaults:
+
+- max retries: `3`
+- base delay: `1s`
+- retry waits: `1s`, `2s`, `4s`
+
+Applied to:
+
+- `eth_blockNumber`
+- `eth_getBlockByNumber`
+- historical `eth_call`
+- chunked `eth_getLogs`
+
+For batched wallet reads, retry only the failed requests and keep successful wallet responses instead of reissuing the whole batch.
 
 ---
 
 ## API
 
-For v1, one public read endpoint is enough:
+For v1, one public read endpoint and one internal repair endpoint are enough.
 
 - `GET /api/apr/snapshots/:ownerAddress`
+- `POST /api/apr/admin/snapshots/repair`
 
 No separate public runs endpoint is needed in v1.
 
@@ -628,6 +659,7 @@ No separate public runs endpoint is needed in v1.
 - query `cssv_snapshot_wallets` joined with `cssv_snapshot_runs`
 - always return results with latest snapshot first: `order by snapshot_date desc`
 - if the address is valid but has no saved snapshot rows, return `200` with `snapshots: []`
+- if the snapshot feature is disabled for the deployment, both endpoints return `503` with an explicit human-readable message instead of `404`
 
 Suggested optional query params:
 

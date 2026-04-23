@@ -1,5 +1,9 @@
 # cSSV Daily Snapshot — Delivery Tasks
 
+This file is preserved as the historical delivery plan used during implementation.
+
+It is **not** the live status board for the current codebase, so the unchecked items below should not be read as “feature missing”. Use the implementation, tests, and the architecture/readme docs as the source of truth for current behavior.
+
 Scope assumptions:
 
 - Architecture in [CSSV_DAILY_SNAPSHOT_ARCHITECTURE.md](./CSSV_DAILY_SNAPSHOT_ARCHITECTURE.md) is frozen.

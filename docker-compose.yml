@@ -33,7 +33,7 @@ services:
       DATABASE_PASSWORD: ssv_password
       DATABASE_NAME: ssv_apr
       ORACLE_URL: ${ORACLE_URL:-https://oracle.example.com}
-      RPC_URL: ${RPC_URL:-http://host.docker.internal:8545}
+      RPC_URL: ${RPC_URL:-https://mainnet.infura.io/v3/replace-me}
       CHAIN_ID: ${CHAIN_ID:-1}
       EXPLORER_CENTER_URL: ${EXPLORER_CENTER_URL:-https://explorer-center.example.com/api/v4/mainnet}
       VIEWS_CONTRACT_ADDRESS: ${VIEWS_CONTRACT_ADDRESS:-0xafE830B6Ee262ba11cce5F32fDCd760FFE6a66e4}
