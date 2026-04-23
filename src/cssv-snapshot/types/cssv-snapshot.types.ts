@@ -1,3 +1,10 @@
+export type CssvBigIntLike = string | number | bigint;
+
+export interface CssvBlockHeader {
+  number: number;
+  timestamp: number;
+}
+
 export interface CssvSnapshotWindow {
   snapshotDate: string;
   fromBlockInclusive: number;
@@ -5,10 +12,14 @@ export interface CssvSnapshotWindow {
   snapshotStateBlock: number;
 }
 
-export interface CssvSnapshotRunSeed extends CssvSnapshotWindow {
-  previousSnapshotBlock: number;
+export interface CssvSnapshotRunSeed {
+  snapshotDate: string;
+  fromBlockInclusive: CssvBigIntLike;
+  toBlockExclusive: CssvBigIntLike;
+  snapshotStateBlock: CssvBigIntLike;
+  previousSnapshotBlock: CssvBigIntLike;
   snapshotTimeUtc: Date;
-  totalStakedWeiSsv: string;
+  totalStakedWeiSsv: CssvBigIntLike;
   walletCount: number;
 }
 
@@ -19,6 +30,15 @@ export interface CssvSnapshotWalletSeed {
   dailyRewardAccrualWei: string;
   claimedInWindowWei: string;
   burnedDustInWindowWei: string;
+}
+
+export interface CssvSnapshotWalletRowInput {
+  walletAddress: string;
+  balanceWeiSsv: CssvBigIntLike;
+  grossClaimableEthWei: CssvBigIntLike;
+  dailyRewardAccrualWei: CssvBigIntLike;
+  claimedInWindowWei: CssvBigIntLike;
+  burnedDustInWindowWei: CssvBigIntLike;
 }
 
 export interface CssvWalletState {

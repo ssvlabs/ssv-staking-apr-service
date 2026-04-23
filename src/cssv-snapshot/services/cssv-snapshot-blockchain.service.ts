@@ -3,6 +3,7 @@ import { ethers } from 'ethers';
 import { CSSV_SNAPSHOT_STAKING_MINIMAL_ABI } from '../abis/ssv-staking.abi';
 import { CSSV_SNAPSHOT_VIEWS_MINIMAL_ABI } from '../abis/ssv-views.abi';
 import { CssvSnapshotConfigService } from '../config/cssv-snapshot.config';
+import { CssvBlockHeader } from '../types/cssv-snapshot.types';
 
 @Injectable()
 export class CssvSnapshotBlockchainService implements OnModuleInit {
@@ -47,5 +48,34 @@ export class CssvSnapshotBlockchainService implements OnModuleInit {
 
   getStakingContractAddress(): string {
     return this.config.stakingContractAddress;
+  }
+
+  async getChainId(): Promise<number> {
+    const network = await this.provider.getNetwork();
+
+    return Number(network.chainId);
+  }
+
+  async getLatestBlockNumber(): Promise<number> {
+    return this.provider.getBlockNumber();
+  }
+
+  async getBlockHeader(blockNumber: number): Promise<CssvBlockHeader> {
+    const block = await this.provider.getBlock(blockNumber);
+
+    if (!block) {
+      throw new Error(`Block ${blockNumber} not found`);
+    }
+
+    return {
+      number: Number(block.number),
+      timestamp: Number(block.timestamp)
+    };
+  }
+
+  async getLatestBlockHeader(): Promise<CssvBlockHeader> {
+    const latestBlockNumber = await this.getLatestBlockNumber();
+
+    return this.getBlockHeader(latestBlockNumber);
   }
 }

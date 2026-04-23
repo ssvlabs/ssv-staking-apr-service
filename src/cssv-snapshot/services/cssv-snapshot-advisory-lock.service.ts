@@ -12,6 +12,7 @@ export class CssvSnapshotAdvisoryLockService {
   constructor(private readonly dataSource: DataSource) {}
 
   async tryAcquire(): Promise<QueryRunner | null> {
+    // Keep the advisory lock on a dedicated connection for the full job duration.
     const runner = this.dataSource.createQueryRunner();
     await runner.connect();
 
