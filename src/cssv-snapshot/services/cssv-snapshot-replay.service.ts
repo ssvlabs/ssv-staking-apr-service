@@ -81,7 +81,7 @@ export class CssvSnapshotReplayService {
     pairedClaims: CssvClaimEventPair[]
   ): void {
     const pairedClaimsByKey = new Map(
-      pairedClaims.map((pair) => [this.getClaimPairKey(pair), pair])
+      pairedClaims.map((pair) => [this.getClaimPairKey(pair.rewardsClaimed), pair])
     );
 
     for (const event of events) {
@@ -167,10 +167,7 @@ export class CssvSnapshotReplayService {
       claim.walletAddress
     );
     const pair = pairedClaimsByKey.get(
-      this.getClaimPairKey({
-        transactionHash: claim.transactionHash,
-        walletAddress: claim.walletAddress
-      })
+      this.getClaimPairKey(claim)
     );
 
     if (!pair) {
@@ -263,8 +260,9 @@ export class CssvSnapshotReplayService {
   private getClaimPairKey(input: {
     transactionHash: string;
     walletAddress: string;
+    logIndex: number;
   }): string {
-    return `${input.transactionHash}:${ethers.getAddress(input.walletAddress)}`;
+    return `${input.transactionHash}:${ethers.getAddress(input.walletAddress)}:${input.logIndex}`;
   }
 
   private toBigInt(value: CssvBigIntLike): bigint {

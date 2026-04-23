@@ -99,7 +99,7 @@ describe('CssvSnapshotBoundaryFinderService', () => {
     const blockchainService = {
       getLatestBlockHeader: jest.fn().mockResolvedValue({
         number: 9_000,
-        timestamp: targetTimestamp
+        timestamp: targetTimestamp + 60
       }),
       getBlockHeader: jest.fn()
     };

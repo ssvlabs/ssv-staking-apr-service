@@ -238,6 +238,83 @@ describe('CssvSnapshotLogReaderService', () => {
     ]);
   });
 
+  it('pairs a claim with the latest preceding settlement when the same tx settles twice', async () => {
+    provider.getLogs.mockImplementation(async (filter: ethers.Filter) => {
+      const address = filter.address as string;
+      const topicHash = filter.topics?.[0] as string;
+
+      if (
+        address === stakingContractAddress &&
+        topicHash === rewardsSettledEvent.topicHash
+      ) {
+        return [
+          createRewardsSettledLog({
+            address,
+            transactionHash:
+              '0x0000000000000000000000000000000000000000000000000000000000000201',
+            blockNumber: 210,
+            transactionIndex: 0,
+            logIndex: 0,
+            user: userA,
+            pendingWei: 0n,
+            accruedWei: 250_001n,
+            userIndex: 4n
+          }),
+          createRewardsSettledLog({
+            address,
+            transactionHash:
+              '0x0000000000000000000000000000000000000000000000000000000000000201',
+            blockNumber: 210,
+            transactionIndex: 0,
+            logIndex: 2,
+            user: userA,
+            pendingWei: 0n,
+            accruedWei: 50_001n,
+            userIndex: 4n
+          })
+        ];
+      }
+
+      if (
+        address === stakingContractAddress &&
+        topicHash === rewardsClaimedEvent.topicHash
+      ) {
+        return [
+          createRewardsClaimedLog({
+            address,
+            transactionHash:
+              '0x0000000000000000000000000000000000000000000000000000000000000201',
+            blockNumber: 210,
+            transactionIndex: 0,
+            logIndex: 1,
+            user: userA,
+            payoutWei: 200_000n
+          })
+        ];
+      }
+
+      return [];
+    });
+
+    const result = await service.readSnapshotEvents(210, 211);
+
+    expect(result.pairedClaims).toEqual([
+      expect.objectContaining({
+        transactionHash:
+          '0x0000000000000000000000000000000000000000000000000000000000000201',
+        walletAddress: ethers.getAddress(userA),
+        rewardsSettled: expect.objectContaining({
+          logIndex: 0,
+          accruedWei: 250_001n
+        }),
+        rewardsClaimed: expect.objectContaining({
+          logIndex: 1,
+          payoutWei: 200_000n
+        })
+      })
+    ]);
+  });
+
   it('retries only the failed log chunk request', async () => {
     let transferAttempts = 0;
 

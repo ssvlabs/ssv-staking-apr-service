@@ -92,7 +92,7 @@ const totalStakedAt104 = 123_456_789n;
     [100, { number: 100, timestamp: Math.floor(Date.parse('2026-04-16T12:00:01.000Z') / 1000) }],
     [104, { number: 104, timestamp: Math.floor(Date.parse('2026-04-17T12:00:00.000Z') / 1000) }],
     [105, { number: 105, timestamp: Math.floor(Date.parse('2026-04-17T12:00:01.000Z') / 1000) }],
-    [106, { number: 106, timestamp: Math.floor(Date.parse('2026-04-17T12:00:20.000Z') / 1000) }]
+    [106, { number: 106, timestamp: Math.floor(Date.parse('2026-04-17T12:16:00.000Z') / 1000) }]
   ]);
   const latestBlockNumber = 106;
   const viewsInterface = new ethers.Interface(CSSV_SNAPSHOT_VIEWS_MINIMAL_ABI);

@@ -252,6 +252,92 @@ describe('CssvSnapshotReplayService', () => {
     });
   });
 
+  it('replays a same-tx claim plus unstake using the settle that precedes the claim', () => {
+    const walletStateMap = service.createWalletStateMap([
+      {
+        walletAddress: userA,
+        balanceWeiSsv: 20n,
+        previousGrossClaimableWei: 0n
+      }
+    ]);
+    const firstSettled: CssvRewardsSettledEvent = {
+      kind: 'rewardsSettled',
+      transactionHash:
+        '0x0000000000000000000000000000000000000000000000000000000000000016',
+      blockNumber: 1,
+      transactionIndex: 0,
+      logIndex: 0,
+      walletAddress: userA,
+      pendingWei: 0n,
+      accruedWei: 250_001n,
+      userIndex: 3n
+    };
+    const claimed: CssvRewardsClaimedEvent = {
+      kind: 'rewardsClaimed',
+      transactionHash: firstSettled.transactionHash,
+      blockNumber: 1,
+      transactionIndex: 0,
+      logIndex: 1,
+      walletAddress: userA,
+      payoutWei: 200_000n
+    };
+    const secondSettled: CssvRewardsSettledEvent = {
+      kind: 'rewardsSettled',
+      transactionHash: firstSettled.transactionHash,
+      blockNumber: 1,
+      transactionIndex: 0,
+      logIndex: 2,
+      walletAddress: userA,
+      pendingWei: 0n,
+      accruedWei: 50_001n,
+      userIndex: 3n
+    };
+    const burnTransfer: CssvTransferEvent = {
+      kind: 'transfer',
+      transactionHash: firstSettled.transactionHash,
+      blockNumber: 1,
+      transactionIndex: 0,
+      logIndex: 3,
+      from: userA,
+      to: ethers.ZeroAddress,
+      amountWei: 20n
+    };
+
+    expect(() =>
+      service.applyEvents(
+        walletStateMap,
+        [firstSettled, claimed, secondSettled, burnTransfer],
+        [
+          {
+            transactionHash: claimed.transactionHash,
+            walletAddress: userA,
+            rewardsSettled: firstSettled,
+            rewardsClaimed: claimed
+          }
+        ]
+      )
+    ).not.toThrow();
+
+    expect(walletStateMap.get(ethers.getAddress(userA))).toMatchObject({
+      balanceWeiSsv: 0n,
+      claimedInWindowWei: 200_000n,
+      burnedDustInWindowWei: 0n
+    });
+
+    expect(
+      service.buildSnapshotWalletRows(walletStateMap, new Map([[userA, 50_001n]]))
+    ).toEqual([
+      {
+        walletAddress: ethers.getAddress(userA),
+        balanceWeiSsv: 0n,
+        grossClaimableEthWei: 50_001n,
+        dailyRewardAccrualWei: 250_001n,
+        claimedInWindowWei: 200_000n,
+        burnedDustInWindowWei: 0n
+      }
+    ]);
+  });
+
   it('keeps no-activity wallets when they still have claimable rewards', () => {
     const walletStateMap = service.createWalletStateMap([
       {

@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CssvSnapshotRun } from '../../entities/cssv-snapshot-run.entity';
 import { CssvSnapshotConfigService } from '../config/cssv-snapshot.config';
-import { GENESIS_TIMESTAMPS_BY_CHAIN_ID } from '../constants/cssv-snapshot.constants';
+import {
+  CSSV_SNAPSHOT_STABILITY_BUFFER_SECONDS,
+  GENESIS_TIMESTAMPS_BY_CHAIN_ID
+} from '../constants/cssv-snapshot.constants';
 import { CssvBlockHeader, CssvSnapshotWindow } from '../types/cssv-snapshot.types';
 import { CssvSnapshotBlockchainService } from './cssv-snapshot-blockchain.service';
 
@@ -43,8 +46,23 @@ export class CssvSnapshotBoundaryFinderService {
     if (latestBlock.timestamp <= snapshotNoonTimestamp) {
       this.logger.warn(
         `Snapshot date ${snapshotDate} is not processable yet: latest block ` +
-        `${latestBlock.number} has timestamp ${latestBlock.timestamp}, ` +
-        `but first block after noon requires timestamp > ${snapshotNoonTimestamp}`
+          `${latestBlock.number} has timestamp ${latestBlock.timestamp}, ` +
+          `but first block after noon requires timestamp > ${snapshotNoonTimestamp}`
+      );
+
+      return null;
+    }
+
+    const latestBlockDate = this.formatUtcDate(new Date(latestBlock.timestamp * 1000));
+    const isCurrentSnapshotDate = latestBlockDate === snapshotDate;
+    const stableAfterTimestamp =
+      snapshotNoonTimestamp + CSSV_SNAPSHOT_STABILITY_BUFFER_SECONDS;
+
+    if (isCurrentSnapshotDate && latestBlock.timestamp < stableAfterTimestamp) {
+      this.logger.warn(
+        `Snapshot date ${snapshotDate} is not stable enough yet: latest block ` +
+          `${latestBlock.number} has timestamp ${latestBlock.timestamp}, ` +
+          `but current-day processing waits until >= ${stableAfterTimestamp}`
       );
 
       return null;

@@ -501,6 +501,128 @@ describe('CSSV snapshot orchestrator integration', () => {
     );
   });
 
+  it('persists a same-tx claim plus unstake flow using the settle that precedes the claim', async () => {
+    chainState.latestBlockNumber = 106;
+    chainState.logs = [
+      createTransferLog({
+        address: cssvTokenAddress,
+        transactionHash:
+          '0x0000000000000000000000000000000000000000000000000000000000000010',
+        blockNumber: 96,
+        transactionIndex: 0,
+        logIndex: 0,
+        from: ethers.ZeroAddress,
+        to: userA,
+        amountWei: 20n
+      }),
+      createRewardsSettledLog({
+        address: stakingAddress,
+        transactionHash:
+          '0x0000000000000000000000000000000000000000000000000000000000000011',
+        blockNumber: 101,
+        transactionIndex: 0,
+        logIndex: 0,
+        user: userA,
+        pendingWei: 0n,
+        accruedWei: 250_001n,
+        userIndex: 7n
+      }),
+      createRewardsClaimedLog({
+        address: stakingAddress,
+        transactionHash:
+          '0x0000000000000000000000000000000000000000000000000000000000000011',
+        blockNumber: 101,
+        transactionIndex: 0,
+        logIndex: 1,
+        user: userA,
+        payoutWei: 200_000n
+      }),
+      createRewardsSettledLog({
+        address: stakingAddress,
+        transactionHash:
+          '0x0000000000000000000000000000000000000000000000000000000000000011',
+        blockNumber: 101,
+        transactionIndex: 0,
+        logIndex: 2,
+        user: userA,
+        pendingWei: 0n,
+        accruedWei: 50_001n,
+        userIndex: 7n
+      }),
+      createTransferLog({
+        address: cssvTokenAddress,
+        transactionHash:
+          '0x0000000000000000000000000000000000000000000000000000000000000011',
+        blockNumber: 101,
+        transactionIndex: 0,
+        logIndex: 3,
+        from: userA,
+        to: ethers.ZeroAddress,
+        amountWei: 20n
+      })
+    ];
+    chainState.balancesByBlockAndWallet = new Map([
+      [getPreviewKey(firstSnapshotStateBlock, userA), 0n]
+    ]);
+    chainState.totalStakedByBlock = new Map([[firstSnapshotStateBlock, 0n]]);
+    chainState.previewByBlockAndWallet = new Map([
+      [getPreviewKey(firstSnapshotStateBlock, userA), 50_001n]
+    ]);
+
+    await expect(orchestratorService.runLockedBackfill('manual')).resolves.toBe(1);
+
+    const latestRun = await queryService.getLatestSnapshotRun();
+
+    expect(latestRun).toMatchObject({
+      snapshotDate: '2026-04-17',
+      totalStakedWeiSsv: '0',
+      walletCount: 1
+    });
+
+    const walletRows = await queryService.getSnapshotWalletsByRunId(latestRun!.id);
+
+    expect(walletRows).toEqual([
+      expect.objectContaining({
+        walletAddress: userA,
+        balanceWeiSsv: '0',
+        grossClaimableEthWei: '50001',
+        dailyRewardAccrualWei: '250001',
+        claimedInWindowWei: '200000',
+        burnedDustInWindowWei: '0'
+      })
+    ]);
+  });
+
+  it('skips startup backfill for the current day until the noon stability buffer passes', async () => {
+    configureChainStateThroughDayOne();
+    chainState.latestBlockNumber = 105;
+    chainState.blocks.set(105, {
+      number: 105,
+      timestamp: baseNoonTimestamp + 60
+    });
+    chainState.blocks.set(106, {
+      number: 106,
+      timestamp: baseNoonTimestamp + 11 * 60
+    });
+
+    await expect(orchestratorService.runLockedBackfill('startup')).resolves.toBe(0);
+    await expect(queryService.getLatestSnapshotRun()).resolves.toBeNull();
+
+    chainState.latestBlockNumber = 106;
+    await waitForProviderCacheWindow();
+
+    await expect(orchestratorService.runLockedBackfill('startup')).resolves.toBe(1);
+
+    const latestRun = await queryService.getLatestSnapshotRun();
+
+    expect(latestRun).toMatchObject({
+      snapshotDate: '2026-04-17',
+      fromBlockInclusive: '95',
+      toBlockExclusive: '105',
+      snapshotStateBlock: '104'
+    });
+  });
+
   it('retries a transient eth_getLogs failure and still persists the snapshot', async () => {
     configureChainStateThroughDayOne();
     const failureKey = getLogsFailureKey({

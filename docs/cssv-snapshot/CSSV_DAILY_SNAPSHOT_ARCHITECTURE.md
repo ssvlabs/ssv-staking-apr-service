@@ -28,7 +28,7 @@ Keep v1 simple:
 
 The scheduled job should run around **12:15 UTC**.
 
-The snapshot boundary is still exactly **12:00:00 UTC**. The job only reads logs and state up to the noon boundary, not up to execution time. The 15-minute delay is only there to reduce reorg risk and avoid racing very recent blocks.
+The snapshot boundary is still exactly **12:00:00 UTC**. The job only reads logs and state up to the noon boundary, not up to execution time. The 10-minute stability delay is only there to reduce reorg risk and avoid racing very recent blocks.
 
 Because the service is deployed as a normal Kubernetes `Deployment`, `replicaCount: 1` is **not** a strong enough exclusivity guarantee by itself. Rolling updates or temporary pod overlap can still start the scheduler twice. The job must therefore acquire a PostgreSQL advisory lock before doing any work.
 
@@ -462,13 +462,20 @@ This matches smart contract accounting exactly.
 
 Important rule:
 
-- pair `RewardsSettled` and `RewardsClaimed` by `transactionHash + user`
+- pair `RewardsSettled` and `RewardsClaimed` by `transactionHash + user`, but if the same tx emits multiple settles for that user, pair the claim with the **latest preceding** `RewardsSettled` in `(blockNumber, transactionIndex, logIndex)` order
 
 Reason:
 
 - `RewardsSettled` also fires on stake / unstake / transfer flows
+- a same-tx combined flow such as `claimEthRewards()` followed by `requestUnstake()` can emit:
+  - `RewardsSettled(user, ..., accrued_before_claim, ...)`
+  - `RewardsClaimed(user, payout)`
+  - `RewardsSettled(user, ..., accrued_after_claim, ...)`
+- in that case, the claim must pair with the first settle above, not the later post-claim settle
 - for v1, standalone `RewardsSettled` events that are **not** paired with `RewardsClaimed` in the same `transactionHash + user` should be ignored
 - only the paired claim path is needed for exact dust accounting
+
+**Edit note (April 24, 2026):** implementation now follows this stricter pairing rule. A plain “last settle in tx wins” approach is incorrect for same-tx claim plus another settle-causing operation.
 
 ### 7. Build wallet query set
 

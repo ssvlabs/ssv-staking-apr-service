@@ -30,16 +30,6 @@ import { CssvSnapshotWriterService } from './services/cssv-snapshot-writer.servi
     CssvSnapshotReplayService,
     CssvSnapshotValidatorService,
     CssvSnapshotWriterService
-  ],
-  exports: [
-    CssvSnapshotConfigService,
-    CssvSnapshotQueryService,
-    CssvSnapshotReadService,
-    CssvSnapshotBoundaryFinderService,
-    CssvSnapshotLogReaderService,
-    CssvSnapshotReplayService,
-    CssvSnapshotValidatorService,
-    CssvSnapshotWriterService
   ]
 })
 export class CssvSnapshotModule {}

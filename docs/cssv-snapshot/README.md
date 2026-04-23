@@ -46,6 +46,7 @@ For local mainnet testing, assume **Infura**. We explicitly do **not** document 
 
 - startup backfill runs from the latest persisted snapshot until the latest eligible `12:00 UTC` day
 - daily cron runs at `12:15 UTC`
+- current-day snapshots are allowed once the chain is at least `10` minutes past the noon boundary
 - post-commit validation is async and warn-only
 - empty bootstrap-era snapshots with `wallet_count=0` and `total_staked_wei_ssv=0` are persisted quietly and skip validation
 - transient RPC failures use retry backoff:

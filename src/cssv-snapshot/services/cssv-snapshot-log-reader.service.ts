@@ -65,50 +65,47 @@ export class CssvSnapshotLogReaderService {
     rewardsSettled: CssvRewardsSettledEvent[],
     rewardsClaimed: CssvRewardsClaimedEvent[]
   ): CssvClaimEventPair[] {
-    // Only same-tx, same-user settle+claim flows are relevant for v1 dust accounting.
-    const pairMap = new Map<
-      string,
-      {
-        rewardsSettled?: CssvRewardsSettledEvent;
-        rewardsClaimed?: CssvRewardsClaimedEvent;
+    // Each claim must pair with the most recent preceding settle for the same tx+user.
+    const unsettledEventsByKey = new Map<string, CssvRewardsSettledEvent[]>();
+
+    for (const event of [...rewardsSettled].sort(this.compareEvents)) {
+      const key = this.getClaimPairKey(event.transactionHash, event.walletAddress);
+      const current = unsettledEventsByKey.get(key) ?? [];
+      current.push(event);
+      unsettledEventsByKey.set(key, current);
+    }
+
+    const pairedClaims: CssvClaimEventPair[] = [];
+
+    for (const claim of [...rewardsClaimed].sort(this.compareEvents)) {
+      const key = this.getClaimPairKey(claim.transactionHash, claim.walletAddress);
+      const candidateSettles = unsettledEventsByKey.get(key);
+
+      if (!candidateSettles?.length) {
+        continue;
       }
-    >();
 
-    for (const event of rewardsSettled) {
-      const key = this.getClaimPairKey(event.transactionHash, event.walletAddress);
-      const current = pairMap.get(key) ?? {};
-      current.rewardsSettled = event;
-      pairMap.set(key, current);
+      for (let index = candidateSettles.length - 1; index >= 0; index -= 1) {
+        const settled = candidateSettles[index];
+
+        if (this.compareEvents(settled, claim) >= 0) {
+          continue;
+        }
+
+        candidateSettles.splice(index, 1);
+        pairedClaims.push({
+          transactionHash: claim.transactionHash,
+          walletAddress: claim.walletAddress,
+          rewardsSettled: settled,
+          rewardsClaimed: claim
+        });
+        break;
+      }
     }
 
-    for (const event of rewardsClaimed) {
-      const key = this.getClaimPairKey(event.transactionHash, event.walletAddress);
-      const current = pairMap.get(key) ?? {};
-      current.rewardsClaimed = event;
-      pairMap.set(key, current);
-    }
-
-    return [...pairMap.entries()]
-      .filter(
-        (
-          entry
-        ): entry is [
-          string,
-          {
-            rewardsSettled: CssvRewardsSettledEvent;
-            rewardsClaimed: CssvRewardsClaimedEvent;
-          }
-        ] => Boolean(entry[1].rewardsSettled && entry[1].rewardsClaimed)
-      )
-      .map(([, pair]) => ({
-        transactionHash: pair.rewardsClaimed.transactionHash,
-        walletAddress: pair.rewardsClaimed.walletAddress,
-        rewardsSettled: pair.rewardsSettled,
-        rewardsClaimed: pair.rewardsClaimed
-      }))
-      .sort((left, right) =>
-        this.compareEvents(left.rewardsClaimed, right.rewardsClaimed)
-      );
+    return pairedClaims.sort((left, right) =>
+      this.compareEvents(left.rewardsClaimed, right.rewardsClaimed)
+    );
   }
 
   private async readTransfers(
