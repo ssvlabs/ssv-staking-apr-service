@@ -8,6 +8,7 @@ import { CSSV_SNAPSHOT_VIEWS_MINIMAL_ABI } from '../src/cssv-snapshot/abis/ssv-v
 import { CssvSnapshotBoundaryFinderService } from '../src/cssv-snapshot/services/cssv-snapshot-boundary-finder.service';
 import { CssvSnapshotBlockchainService } from '../src/cssv-snapshot/services/cssv-snapshot-blockchain.service';
 import { CssvSnapshotLogReaderService } from '../src/cssv-snapshot/services/cssv-snapshot-log-reader.service';
+import { CssvSnapshotReplayService } from '../src/cssv-snapshot/services/cssv-snapshot-replay.service';
 
 type JsonRpcId = string | number | null;
 
@@ -48,6 +49,19 @@ interface RpcLog {
   transactionHash: string;
   transactionIndex: string;
 }
+
+type MockCssvSnapshotConfig = Pick<
+  CssvSnapshotConfigService,
+  | 'rpcUrl'
+  | 'viewsContractAddress'
+  | 'stakingContractAddress'
+  | 'cssvTokenAddress'
+  | 'cssvDeploymentBlock'
+  | 'expectedBlocksPerDay'
+  | 'logChunkSizeBlocks'
+  | 'cronExpression'
+  | 'cronTimeZone'
+>;
 
 describe('CSSV snapshot RPC integration', () => {
   const viewsAddress = '0x5AdDb3f1529C5ec70D77400499eE4bbF328368fe';
@@ -130,6 +144,7 @@ describe('CSSV snapshot RPC integration', () => {
   let blockchainService: CssvSnapshotBlockchainService;
   let logReaderService: CssvSnapshotLogReaderService;
   let boundaryFinderService: CssvSnapshotBoundaryFinderService;
+  let replayService: CssvSnapshotReplayService;
 
   beforeAll(async () => {
     server = createServer(async (request, response) => {
@@ -177,8 +192,7 @@ describe('CSSV snapshot RPC integration', () => {
 
     const addressInfo = server.address() as AddressInfo;
     rpcUrl = `http://127.0.0.1:${addressInfo.port}`;
-    const config = {
-      enabled: true,
+    const config: MockCssvSnapshotConfig = {
       rpcUrl,
       viewsContractAddress: viewsAddress,
       stakingContractAddress: stakingAddress,
@@ -188,14 +202,20 @@ describe('CSSV snapshot RPC integration', () => {
       logChunkSizeBlocks: 2,
       cronExpression: '15 12 * * *',
       cronTimeZone: 'UTC'
-    } as CssvSnapshotConfigService;
+    };
 
-    blockchainService = new CssvSnapshotBlockchainService(config);
-    logReaderService = new CssvSnapshotLogReaderService(config, blockchainService);
-    boundaryFinderService = new CssvSnapshotBoundaryFinderService(
-      config,
+    blockchainService = new CssvSnapshotBlockchainService(
+      config as CssvSnapshotConfigService
+    );
+    logReaderService = new CssvSnapshotLogReaderService(
+      config as CssvSnapshotConfigService,
       blockchainService
     );
+    boundaryFinderService = new CssvSnapshotBoundaryFinderService(
+      config as CssvSnapshotConfigService,
+      blockchainService
+    );
+    replayService = new CssvSnapshotReplayService();
   });
 
   afterAll(async () => {
@@ -291,6 +311,59 @@ describe('CSSV snapshot RPC integration', () => {
       toBlockExclusive: 105,
       snapshotStateBlock: 104
     });
+  });
+
+  it('replays events into final snapshot rows with exact zero-balance dust accounting', async () => {
+    const result = await logReaderService.readSnapshotEvents(100, 105);
+    const walletStateMap = replayService.createWalletStateMap([
+      {
+        walletAddress: userA,
+        balanceWeiSsv: 10n,
+        previousGrossClaimableWei: 100n
+      },
+      {
+        walletAddress: userB,
+        balanceWeiSsv: 10n,
+        previousGrossClaimableWei: 0n
+      }
+    ]);
+
+    replayService.applyEvents(walletStateMap, result.events, result.pairedClaims);
+
+    expect(walletStateMap.get(ethers.getAddress(userA))).toMatchObject({
+      balanceWeiSsv: 20n,
+      previousGrossClaimableWei: 100n,
+      claimedInWindowWei: 40n,
+      burnedDustInWindowWei: 10n
+    });
+    expect(walletStateMap.get(ethers.getAddress(userB))).toMatchObject({
+      balanceWeiSsv: 0n,
+      previousGrossClaimableWei: 0n,
+      claimedInWindowWei: 0n,
+      burnedDustInWindowWei: 0n
+    });
+
+    const currentPreviewByWallet = new Map<string, bigint>();
+
+    for (const walletAddress of walletStateMap.keys()) {
+      currentPreviewByWallet.set(
+        walletAddress,
+        await blockchainService.previewClaimableEthAtBlock(walletAddress, 104)
+      );
+    }
+
+    expect(
+      replayService.buildSnapshotWalletRows(walletStateMap, currentPreviewByWallet)
+    ).toEqual([
+      {
+        walletAddress: ethers.getAddress(userA),
+        balanceWeiSsv: 20n,
+        grossClaimableEthWei: previewClaimableAt104,
+        dailyRewardAccrualWei: previewClaimableAt104 - 50n,
+        claimedInWindowWei: 40n,
+        burnedDustInWindowWei: 10n
+      }
+    ]);
   });
 
   async function handleRpcRequest(

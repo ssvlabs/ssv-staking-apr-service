@@ -23,6 +23,12 @@ export interface CssvSnapshotRunSeed {
   walletCount: number;
 }
 
+export interface CssvWalletStateSeed {
+  walletAddress: string;
+  balanceWeiSsv: CssvBigIntLike;
+  previousGrossClaimableWei: CssvBigIntLike;
+}
+
 export interface CssvSnapshotWalletRowInput {
   walletAddress: string;
   balanceWeiSsv: CssvBigIntLike;
