@@ -8,6 +8,7 @@ import { CssvBlockHeader } from '../types/cssv-snapshot.types';
 @Injectable()
 export class CssvSnapshotBlockchainService implements OnModuleInit {
   private readonly logger = new Logger(CssvSnapshotBlockchainService.name);
+  private static readonly PREVIEW_BATCH_SIZE = 100;
   private readonly provider: ethers.JsonRpcProvider;
   private readonly viewsContract: ethers.Contract;
 
@@ -74,6 +75,40 @@ export class CssvSnapshotBlockchainService implements OnModuleInit {
       [ethers.getAddress(walletAddress)],
       blockNumber
     );
+  }
+
+  async previewClaimableEthBatchAtBlock(
+    walletAddresses: Iterable<string>,
+    blockNumber: number
+  ): Promise<Map<string, bigint>> {
+    const normalizedWalletAddresses = [...new Set(
+      [...walletAddresses].map((walletAddress) => ethers.getAddress(walletAddress))
+    )];
+    const previewByWallet = new Map<string, bigint>();
+
+    // Keep concurrent eth_call fanout bounded so one large day does not blast the RPC.
+    for (
+      let start = 0;
+      start < normalizedWalletAddresses.length;
+      start += CssvSnapshotBlockchainService.PREVIEW_BATCH_SIZE
+    ) {
+      const batchWalletAddresses = normalizedWalletAddresses.slice(
+        start,
+        start + CssvSnapshotBlockchainService.PREVIEW_BATCH_SIZE
+      );
+      const batchResults = await Promise.all(
+        batchWalletAddresses.map(async (walletAddress) => [
+          walletAddress,
+          await this.previewClaimableEthAtBlock(walletAddress, blockNumber)
+        ] as const)
+      );
+
+      for (const [walletAddress, previewWei] of batchResults) {
+        previewByWallet.set(walletAddress, previewWei);
+      }
+    }
+
+    return previewByWallet;
   }
 
   private async readViewsBigIntAtBlock(

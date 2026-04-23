@@ -315,7 +315,7 @@ describe('CSSV snapshot RPC integration', () => {
 
   it('replays events into final snapshot rows with exact zero-balance dust accounting', async () => {
     const result = await logReaderService.readSnapshotEvents(100, 105);
-    const walletStateMap = replayService.createWalletStateMap([
+    const previousState = [
       {
         walletAddress: userA,
         balanceWeiSsv: 10n,
@@ -326,7 +326,13 @@ describe('CSSV snapshot RPC integration', () => {
         balanceWeiSsv: 10n,
         previousGrossClaimableWei: 0n
       }
-    ]);
+    ];
+    const walletQuerySet = replayService.buildWalletQuerySet(
+      previousState,
+      result.events,
+      result.pairedClaims
+    );
+    const walletStateMap = replayService.createWalletStateMap(previousState);
 
     replayService.applyEvents(walletStateMap, result.events, result.pairedClaims);
 
@@ -343,14 +349,14 @@ describe('CSSV snapshot RPC integration', () => {
       burnedDustInWindowWei: 0n
     });
 
-    const currentPreviewByWallet = new Map<string, bigint>();
-
-    for (const walletAddress of walletStateMap.keys()) {
-      currentPreviewByWallet.set(
-        walletAddress,
-        await blockchainService.previewClaimableEthAtBlock(walletAddress, 104)
-      );
-    }
+    expect(walletQuerySet).toEqual(
+      expect.arrayContaining([
+        ethers.getAddress(userA),
+        ethers.getAddress(userB)
+      ])
+    );
+    const currentPreviewByWallet =
+      await blockchainService.previewClaimableEthBatchAtBlock(walletQuerySet, 104);
 
     expect(
       replayService.buildSnapshotWalletRows(walletStateMap, currentPreviewByWallet)

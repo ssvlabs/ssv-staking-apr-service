@@ -37,6 +37,44 @@ export class CssvSnapshotReplayService {
     );
   }
 
+  buildWalletQuerySet(
+    previousState: CssvWalletStateSeed[],
+    events: CssvSnapshotEvent[],
+    pairedClaims: CssvClaimEventPair[]
+  ): string[] {
+    // Only this wallet set needs previewClaimableEth at the snapshot boundary.
+    const walletAddresses = new Set<string>();
+
+    for (const wallet of previousState) {
+      walletAddresses.add(ethers.getAddress(wallet.walletAddress));
+    }
+
+    for (const event of events) {
+      switch (event.kind) {
+        case 'transfer':
+          if (event.from !== ethers.ZeroAddress) {
+            walletAddresses.add(ethers.getAddress(event.from));
+          }
+
+          if (event.to !== ethers.ZeroAddress) {
+            walletAddresses.add(ethers.getAddress(event.to));
+          }
+          break;
+        case 'rewardsSettled':
+          break;
+        case 'rewardsClaimed':
+          walletAddresses.add(ethers.getAddress(event.walletAddress));
+          break;
+      }
+    }
+
+    for (const pair of pairedClaims) {
+      walletAddresses.add(ethers.getAddress(pair.walletAddress));
+    }
+
+    return [...walletAddresses];
+  }
+
   applyEvents(
     walletStateMap: Map<string, CssvWalletState>,
     events: CssvSnapshotEvent[],
