@@ -3,18 +3,21 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { CssvSnapshotConfigService } from './config/cssv-snapshot.config';
 import { CssvSnapshotRun } from '../entities/cssv-snapshot-run.entity';
 import { CssvSnapshotWallet } from '../entities/cssv-snapshot-wallet.entity';
+import { CssvSnapshotController } from './controllers/cssv-snapshot.controller';
 import { CssvSnapshotAdvisoryLockService } from './services/cssv-snapshot-advisory-lock.service';
 import { CssvSnapshotBlockchainService } from './services/cssv-snapshot-blockchain.service';
 import { CssvSnapshotBoundaryFinderService } from './services/cssv-snapshot-boundary-finder.service';
 import { CssvSnapshotLogReaderService } from './services/cssv-snapshot-log-reader.service';
 import { CssvSnapshotOrchestratorService } from './services/cssv-snapshot-orchestrator.service';
 import { CssvSnapshotQueryService } from './services/cssv-snapshot-query.service';
+import { CssvSnapshotReadService } from './services/cssv-snapshot-read.service';
 import { CssvSnapshotReplayService } from './services/cssv-snapshot-replay.service';
 import { CssvSnapshotValidatorService } from './services/cssv-snapshot-validator.service';
 import { CssvSnapshotWriterService } from './services/cssv-snapshot-writer.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([CssvSnapshotRun, CssvSnapshotWallet])],
+  controllers: [CssvSnapshotController],
   providers: [
     CssvSnapshotConfigService,
     CssvSnapshotAdvisoryLockService,
@@ -23,6 +26,7 @@ import { CssvSnapshotWriterService } from './services/cssv-snapshot-writer.servi
     CssvSnapshotLogReaderService,
     CssvSnapshotOrchestratorService,
     CssvSnapshotQueryService,
+    CssvSnapshotReadService,
     CssvSnapshotReplayService,
     CssvSnapshotValidatorService,
     CssvSnapshotWriterService
@@ -30,6 +34,7 @@ import { CssvSnapshotWriterService } from './services/cssv-snapshot-writer.servi
   exports: [
     CssvSnapshotConfigService,
     CssvSnapshotQueryService,
+    CssvSnapshotReadService,
     CssvSnapshotBoundaryFinderService,
     CssvSnapshotLogReaderService,
     CssvSnapshotReplayService,
