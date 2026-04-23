@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ethers } from 'ethers';
+import { CSSV_TOKEN_MINIMAL_ABI } from '../abis/cssv-token.abi';
 import { CssvSnapshotConfigService } from '../config/cssv-snapshot.config';
 import { CSSV_SNAPSHOT_STAKING_MINIMAL_ABI } from '../abis/ssv-staking.abi';
 import { CSSV_SNAPSHOT_VIEWS_MINIMAL_ABI } from '../abis/ssv-views.abi';
@@ -10,6 +11,7 @@ export class CssvSnapshotBlockchainService implements OnModuleInit {
   private readonly logger = new Logger(CssvSnapshotBlockchainService.name);
   private static readonly PREVIEW_BATCH_SIZE = 100;
   private readonly provider: ethers.JsonRpcProvider;
+  private readonly cssvTokenContract: ethers.Contract;
   private readonly viewsContract: ethers.Contract;
 
   constructor(private readonly config: CssvSnapshotConfigService) {
@@ -22,6 +24,11 @@ export class CssvSnapshotBlockchainService implements OnModuleInit {
         batchStallTime: 20,
         batchMaxSize: 1 << 20 // 1 MB
       }
+    );
+    this.cssvTokenContract = new ethers.Contract(
+      this.config.cssvTokenAddress,
+      CSSV_TOKEN_MINIMAL_ABI,
+      this.provider
     );
     this.viewsContract = new ethers.Contract(
       this.config.viewsContractAddress,
@@ -84,9 +91,7 @@ export class CssvSnapshotBlockchainService implements OnModuleInit {
     walletAddresses: Iterable<string>,
     blockNumber: number
   ): Promise<Map<string, bigint>> {
-    const normalizedWalletAddresses = [...new Set(
-      [...walletAddresses].map((walletAddress) => ethers.getAddress(walletAddress))
-    )];
+    const normalizedWalletAddresses = this.normalizeWalletAddressSet(walletAddresses);
     const previewByWallet = new Map<string, bigint>();
 
     // Keep concurrent eth_call fanout bounded so one large day does not blast the RPC.
@@ -114,6 +119,48 @@ export class CssvSnapshotBlockchainService implements OnModuleInit {
     return previewByWallet;
   }
 
+  async balanceWeiSsvAtBlock(
+    walletAddress: string,
+    blockNumber: number
+  ): Promise<bigint> {
+    return this.readTokenBigIntAtBlock(
+      'balanceOf',
+      [ethers.getAddress(walletAddress)],
+      blockNumber
+    );
+  }
+
+  async balanceWeiSsvBatchAtBlock(
+    walletAddresses: Iterable<string>,
+    blockNumber: number
+  ): Promise<Map<string, bigint>> {
+    const normalizedWalletAddresses = this.normalizeWalletAddressSet(walletAddresses);
+    const balancesByWallet = new Map<string, bigint>();
+
+    for (
+      let start = 0;
+      start < normalizedWalletAddresses.length;
+      start += CssvSnapshotBlockchainService.PREVIEW_BATCH_SIZE
+    ) {
+      const batchWalletAddresses = normalizedWalletAddresses.slice(
+        start,
+        start + CssvSnapshotBlockchainService.PREVIEW_BATCH_SIZE
+      );
+      const batchResults = await Promise.all(
+        batchWalletAddresses.map(async (walletAddress) => [
+          walletAddress,
+          await this.balanceWeiSsvAtBlock(walletAddress, blockNumber)
+        ] as const)
+      );
+
+      for (const [walletAddress, balanceWeiSsv] of batchResults) {
+        balancesByWallet.set(walletAddress, balanceWeiSsv);
+      }
+    }
+
+    return balancesByWallet;
+  }
+
   private async readViewsBigIntAtBlock(
     functionName: 'totalStaked' | 'previewClaimableEth',
     args: readonly unknown[],
@@ -136,5 +183,33 @@ export class CssvSnapshotBlockchainService implements OnModuleInit {
     );
 
     return BigInt(result.toString());
+  }
+
+  private async readTokenBigIntAtBlock(
+    functionName: 'balanceOf',
+    args: readonly unknown[],
+    blockNumber: number
+  ): Promise<bigint> {
+    const data = this.cssvTokenContract.interface.encodeFunctionData(
+      functionName,
+      args
+    );
+    const rawResult = await this.provider.call({
+      to: this.config.cssvTokenAddress,
+      data,
+      blockTag: blockNumber
+    });
+    const [result] = this.cssvTokenContract.interface.decodeFunctionResult(
+      functionName,
+      rawResult
+    );
+
+    return BigInt(result.toString());
+  }
+
+  private normalizeWalletAddressSet(walletAddresses: Iterable<string>): string[] {
+    return [...new Set(
+      [...walletAddresses].map((walletAddress) => ethers.getAddress(walletAddress))
+    )];
   }
 }

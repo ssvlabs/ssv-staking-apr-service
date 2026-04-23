@@ -25,6 +25,16 @@ export class CssvSnapshotQueryService {
     return rows[0] ?? null;
   }
 
+  async getSnapshotRunById(
+    snapshotRunId: string | number | bigint
+  ): Promise<CssvSnapshotRun | null> {
+    return this.snapshotRunRepository.findOne({
+      where: {
+        id: snapshotRunId.toString()
+      }
+    });
+  }
+
   async getSnapshotWalletsByRunId(
     snapshotRunId: string | number | bigint
   ): Promise<CssvSnapshotWallet[]> {

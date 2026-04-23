@@ -1,5 +1,6 @@
 import { createServer, IncomingMessage, Server } from 'node:http';
 import { AddressInfo, Socket } from 'node:net';
+import { Logger } from '@nestjs/common';
 import { ethers } from 'ethers';
 import { DataSource } from 'typeorm';
 import { GenericContainer, StartedTestContainer, Wait } from 'testcontainers';
@@ -22,6 +23,7 @@ import { CssvSnapshotLogReaderService } from '../src/cssv-snapshot/services/cssv
 import { CssvSnapshotOrchestratorService } from '../src/cssv-snapshot/services/cssv-snapshot-orchestrator.service';
 import { CssvSnapshotQueryService } from '../src/cssv-snapshot/services/cssv-snapshot-query.service';
 import { CssvSnapshotReplayService } from '../src/cssv-snapshot/services/cssv-snapshot-replay.service';
+import { CssvSnapshotValidatorService } from '../src/cssv-snapshot/services/cssv-snapshot-validator.service';
 import { CssvSnapshotWriterService } from '../src/cssv-snapshot/services/cssv-snapshot-writer.service';
 
 const transferInterface = new ethers.Interface(CSSV_TOKEN_MINIMAL_ABI);
@@ -64,6 +66,7 @@ interface MockChainState {
   latestBlockNumber: number;
   blocks: Map<number, MockBlock>;
   logs: RpcLog[];
+  balancesByBlockAndWallet: Map<string, bigint>;
   totalStakedByBlock: Map<number, bigint>;
   previewByBlockAndWallet: Map<string, bigint>;
 }
@@ -219,6 +222,7 @@ describe('CSSV snapshot orchestrator integration', () => {
   let writerService: CssvSnapshotWriterService;
   let lockService: CssvSnapshotAdvisoryLockService;
   let blockchainService: CssvSnapshotBlockchainService;
+  let validatorService: CssvSnapshotValidatorService;
   let orchestratorService: CssvSnapshotOrchestratorService;
 
   beforeAll(async () => {
@@ -332,6 +336,10 @@ describe('CSSV snapshot orchestrator integration', () => {
       blockchainService
     );
     const replayService = new CssvSnapshotReplayService();
+    validatorService = new CssvSnapshotValidatorService(
+      queryService,
+      blockchainService
+    );
 
     orchestratorService = new CssvSnapshotOrchestratorService(
       config as CssvSnapshotConfigService,
@@ -344,6 +352,7 @@ describe('CSSV snapshot orchestrator integration', () => {
       logReaderService,
       queryService,
       replayService,
+      validatorService,
       writerService
     );
   });
@@ -382,6 +391,11 @@ describe('CSSV snapshot orchestrator integration', () => {
     await waitForProviderCacheWindow();
   });
 
+  afterEach(async () => {
+    await waitForProviderCacheWindow();
+    jest.restoreAllMocks();
+  });
+
   it('creates the first snapshot day end-to-end', async () => {
     configureChainStateThroughDayOne();
 
@@ -395,7 +409,7 @@ describe('CSSV snapshot orchestrator integration', () => {
       fromBlockInclusive: '95',
       toBlockExclusive: '105',
       snapshotStateBlock: '104',
-      totalStakedWeiSsv: '1000',
+      totalStakedWeiSsv: '50',
       walletCount: 2
     });
 
@@ -423,6 +437,57 @@ describe('CSSV snapshot orchestrator integration', () => {
     );
   });
 
+  it('keeps deployment-era empty snapshots quiet during validation', async () => {
+    configureEmptyChainStateThroughDayOne();
+    const validateSpy = jest.spyOn(validatorService, 'validateSnapshot');
+    const warnSpy = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+
+    await expect(orchestratorService.runLockedBackfill('manual')).resolves.toBe(1);
+
+    const latestRun = await queryService.getLatestSnapshotRun();
+    const walletRows = await queryService.getSnapshotWalletsByRunId(latestRun!.id);
+
+    expect(latestRun).toMatchObject({
+      snapshotDate: '2026-04-17',
+      totalStakedWeiSsv: '0',
+      walletCount: 0
+    });
+    expect(walletRows).toEqual([]);
+    expect(validateSpy).not.toHaveBeenCalled();
+
+    const validationResult = await validatorService.validateSnapshot(latestRun!.id);
+
+    expect(validationResult.warnings).toEqual([]);
+    expect(
+      warnSpy.mock.calls.some(([message]) =>
+        String(message).includes('CSSV snapshot validation')
+      )
+    ).toBe(false);
+
+    warnSpy.mockRestore();
+    validateSpy.mockRestore();
+  });
+
+  it('triggers post-commit validation asynchronously after snapshot commit', async () => {
+    configureChainStateThroughDayOne();
+    const validateSpy = jest
+      .spyOn(validatorService, 'validateSnapshot')
+      .mockResolvedValueOnce({
+        snapshotDate: '2026-04-17',
+        snapshotRunId: '1',
+        warnings: []
+      });
+
+    await orchestratorService.runLockedBackfill('manual');
+
+    const latestRun = await queryService.getLatestSnapshotRun();
+
+    expect(validateSpy).toHaveBeenCalledWith(latestRun!.id);
+    validateSpy.mockRestore();
+  });
+
   it('creates the next day from the previous persisted snapshot', async () => {
     configureChainStateThroughDayOne();
     await orchestratorService.runLockedBackfill('manual');
@@ -440,7 +505,7 @@ describe('CSSV snapshot orchestrator integration', () => {
       fromBlockInclusive: '105',
       toBlockExclusive: '205',
       snapshotStateBlock: '204',
-      totalStakedWeiSsv: '1100',
+      totalStakedWeiSsv: '50',
       walletCount: 2
     });
 
@@ -485,7 +550,7 @@ describe('CSSV snapshot orchestrator integration', () => {
       fromBlockInclusive: '205',
       toBlockExclusive: '305',
       snapshotStateBlock: '304',
-      totalStakedWeiSsv: '1200',
+      totalStakedWeiSsv: '50',
       walletCount: 2
     });
 
@@ -513,6 +578,124 @@ describe('CSSV snapshot orchestrator integration', () => {
     );
   });
 
+  it('repairs from a bad snapshot day by deleting it and rebuilding later days', async () => {
+    configureChainStateThroughDayThree();
+    await orchestratorService.runLockedBackfill('manual');
+    await waitForProviderCacheWindow();
+
+    await expect(
+      orchestratorService.runLockedRepairFromSnapshotDate('2026-04-18')
+    ).resolves.toEqual({
+      deletedRuns: 2,
+      createdRuns: 2
+    });
+
+    const latestRun = await queryService.getLatestSnapshotRun();
+    const [runCount] = (await dataSource.query(
+      'select count(*)::int as count from "cssv_snapshot_runs"'
+    )) as Array<{ count: number }>;
+
+    expect(runCount.count).toBe(3);
+    expect(latestRun).toMatchObject({
+      snapshotDate: '2026-04-19'
+    });
+
+    const latestWalletRows = await queryService.getSnapshotWalletsByRunId(
+      latestRun!.id
+    );
+
+    expect(latestWalletRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          walletAddress: userA,
+          grossClaimableEthWei: '5'
+        }),
+        expect.objectContaining({
+          walletAddress: userB,
+          grossClaimableEthWei: '20'
+        })
+      ])
+    );
+  });
+
+  it('emits warn-only validation logs when sampled values mismatch', async () => {
+    configureChainStateThroughDayOne();
+    await orchestratorService.runLockedBackfill('manual');
+    await waitForProviderCacheWindow();
+
+    const latestRun = await queryService.getLatestSnapshotRun();
+
+    chainState.previewByBlockAndWallet.set(
+      getPreviewKey(firstSnapshotStateBlock, userA),
+      61n
+    );
+    chainState.balancesByBlockAndWallet.set(
+      getPreviewKey(firstSnapshotStateBlock, userB),
+      11n
+    );
+    await waitForProviderCacheWindow();
+
+    const warnSpy = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+    const result = await validatorService.validateSnapshot(latestRun!.id);
+
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('sampled_preview_mismatch'),
+        expect.stringContaining('sampled_balance_mismatch')
+      ])
+    );
+    expect(
+      warnSpy.mock.calls.some(([message]) =>
+        String(message).includes('repairFromSnapshotDate=2026-04-17')
+      )
+    ).toBe(true);
+
+    warnSpy.mockRestore();
+  });
+
+  it('rolls back a failed write and recovers cleanly on the next rerun', async () => {
+    configureChainStateThroughDayOne();
+    await orchestratorService.runLockedBackfill('manual');
+
+    configureChainStateThroughDayTwo();
+    await waitForProviderCacheWindow();
+
+    const bulkInsertSpy = jest
+      .spyOn(writerService, 'bulkInsertWalletRows')
+      .mockRejectedValueOnce(new Error('forced bulk insert failure'));
+
+    await expect(orchestratorService.runLockedBackfill('manual')).rejects.toThrow(
+      'forced bulk insert failure'
+    );
+
+    const latestRunAfterFailure = await queryService.getLatestSnapshotRun();
+    const [runCountAfterFailure] = (await dataSource.query(
+      'select count(*)::int as count from "cssv_snapshot_runs"'
+    )) as Array<{ count: number }>;
+
+    expect(latestRunAfterFailure).toMatchObject({
+      snapshotDate: '2026-04-17'
+    });
+    expect(runCountAfterFailure.count).toBe(1);
+
+    bulkInsertSpy.mockRestore();
+    await waitForProviderCacheWindow();
+
+    await expect(orchestratorService.runLockedBackfill('manual')).resolves.toBe(1);
+
+    const latestRunAfterRecovery = await queryService.getLatestSnapshotRun();
+    const [runCountAfterRecovery] = (await dataSource.query(
+      'select count(*)::int as count from "cssv_snapshot_runs"'
+    )) as Array<{ count: number }>;
+
+    expect(latestRunAfterRecovery).toMatchObject({
+      snapshotDate: '2026-04-18'
+    });
+    expect(runCountAfterRecovery.count).toBe(2);
+  });
+
   it('skips execution when the advisory lock is already held', async () => {
     configureChainStateThroughDayOne();
     const heldRunner = await lockService.tryAcquire();
@@ -528,19 +711,37 @@ describe('CSSV snapshot orchestrator integration', () => {
   function configureChainStateThroughDayOne(): void {
     chainState.latestBlockNumber = 106;
     chainState.logs = [...dayOneLogs];
-    chainState.totalStakedByBlock = new Map([[firstSnapshotStateBlock, 1000n]]);
+    chainState.balancesByBlockAndWallet = new Map([
+      [getPreviewKey(firstSnapshotStateBlock, userA), 40n],
+      [getPreviewKey(firstSnapshotStateBlock, userB), 10n]
+    ]);
+    chainState.totalStakedByBlock = new Map([[firstSnapshotStateBlock, 50n]]);
     chainState.previewByBlockAndWallet = new Map([
       [getPreviewKey(firstSnapshotStateBlock, userA), 60n],
       [getPreviewKey(firstSnapshotStateBlock, userB), 5n]
     ]);
   }
 
+  function configureEmptyChainStateThroughDayOne(): void {
+    chainState.latestBlockNumber = 106;
+    chainState.logs = [];
+    chainState.balancesByBlockAndWallet = new Map();
+    chainState.totalStakedByBlock = new Map([[firstSnapshotStateBlock, 0n]]);
+    chainState.previewByBlockAndWallet = new Map();
+  }
+
   function configureChainStateThroughDayTwo(): void {
     chainState.latestBlockNumber = 206;
     chainState.logs = [...dayOneLogs, ...dayTwoLogs];
+    chainState.balancesByBlockAndWallet = new Map([
+      [getPreviewKey(firstSnapshotStateBlock, userA), 40n],
+      [getPreviewKey(firstSnapshotStateBlock, userB), 10n],
+      [getPreviewKey(secondSnapshotStateBlock, userA), 0n],
+      [getPreviewKey(secondSnapshotStateBlock, userB), 50n]
+    ]);
     chainState.totalStakedByBlock = new Map([
-      [firstSnapshotStateBlock, 1000n],
-      [secondSnapshotStateBlock, 1100n]
+      [firstSnapshotStateBlock, 50n],
+      [secondSnapshotStateBlock, 50n]
     ]);
     chainState.previewByBlockAndWallet = new Map([
       [getPreviewKey(firstSnapshotStateBlock, userA), 60n],
@@ -553,10 +754,18 @@ describe('CSSV snapshot orchestrator integration', () => {
   function configureChainStateThroughDayThree(): void {
     chainState.latestBlockNumber = 306;
     chainState.logs = [...dayOneLogs, ...dayTwoLogs];
+    chainState.balancesByBlockAndWallet = new Map([
+      [getPreviewKey(firstSnapshotStateBlock, userA), 40n],
+      [getPreviewKey(firstSnapshotStateBlock, userB), 10n],
+      [getPreviewKey(secondSnapshotStateBlock, userA), 0n],
+      [getPreviewKey(secondSnapshotStateBlock, userB), 50n],
+      [getPreviewKey(thirdSnapshotStateBlock, userA), 0n],
+      [getPreviewKey(thirdSnapshotStateBlock, userB), 50n]
+    ]);
     chainState.totalStakedByBlock = new Map([
-      [firstSnapshotStateBlock, 1000n],
-      [secondSnapshotStateBlock, 1100n],
-      [thirdSnapshotStateBlock, 1200n]
+      [firstSnapshotStateBlock, 50n],
+      [secondSnapshotStateBlock, 50n],
+      [thirdSnapshotStateBlock, 50n]
     ]);
     chainState.previewByBlockAndWallet = new Map([
       [getPreviewKey(firstSnapshotStateBlock, userA), 60n],
@@ -658,9 +867,23 @@ describe('CSSV snapshot orchestrator integration', () => {
     const transaction = params[0] as { data?: string; blockTag?: string | number };
     const data = transaction.data ?? '';
     const blockNumber = normalizeBlockTag(params[1] ?? transaction.blockTag);
+    const balanceSelector = transferInterface.getFunction('balanceOf')!.selector;
     const totalStakedSelector = viewsInterface.getFunction('totalStaked')!.selector;
     const previewSelector =
       viewsInterface.getFunction('previewClaimableEth')!.selector;
+
+    if (data.startsWith(balanceSelector)) {
+      const [walletAddress] = transferInterface.decodeFunctionData(
+        'balanceOf',
+        data
+      );
+
+      return transferInterface.encodeFunctionResult('balanceOf', [
+        chainState.balancesByBlockAndWallet.get(
+          getPreviewKey(blockNumber, walletAddress)
+        ) ?? 0n
+      ]);
+    }
 
     if (data.startsWith(totalStakedSelector)) {
       return viewsInterface.encodeFunctionResult('totalStaked', [
@@ -690,6 +913,7 @@ function createChainState(blocks: Map<number, MockBlock>): MockChainState {
     latestBlockNumber: 0,
     blocks,
     logs: [],
+    balancesByBlockAndWallet: new Map(),
     totalStakedByBlock: new Map(),
     previewByBlockAndWallet: new Map()
   };

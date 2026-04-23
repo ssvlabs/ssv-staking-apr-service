@@ -10,6 +10,7 @@ import { CssvSnapshotLogReaderService } from './services/cssv-snapshot-log-reade
 import { CssvSnapshotOrchestratorService } from './services/cssv-snapshot-orchestrator.service';
 import { CssvSnapshotQueryService } from './services/cssv-snapshot-query.service';
 import { CssvSnapshotReplayService } from './services/cssv-snapshot-replay.service';
+import { CssvSnapshotValidatorService } from './services/cssv-snapshot-validator.service';
 import { CssvSnapshotWriterService } from './services/cssv-snapshot-writer.service';
 
 @Module({
@@ -23,6 +24,7 @@ import { CssvSnapshotWriterService } from './services/cssv-snapshot-writer.servi
     CssvSnapshotOrchestratorService,
     CssvSnapshotQueryService,
     CssvSnapshotReplayService,
+    CssvSnapshotValidatorService,
     CssvSnapshotWriterService
   ],
   exports: [
@@ -31,6 +33,7 @@ import { CssvSnapshotWriterService } from './services/cssv-snapshot-writer.servi
     CssvSnapshotBoundaryFinderService,
     CssvSnapshotLogReaderService,
     CssvSnapshotReplayService,
+    CssvSnapshotValidatorService,
     CssvSnapshotWriterService
   ]
 })

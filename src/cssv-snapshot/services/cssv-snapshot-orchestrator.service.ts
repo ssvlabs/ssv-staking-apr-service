@@ -19,7 +19,13 @@ import { CssvSnapshotBoundaryFinderService } from './cssv-snapshot-boundary-find
 import { CssvSnapshotLogReaderService } from './cssv-snapshot-log-reader.service';
 import { CssvSnapshotQueryService } from './cssv-snapshot-query.service';
 import { CssvSnapshotReplayService } from './cssv-snapshot-replay.service';
+import { CssvSnapshotValidatorService } from './cssv-snapshot-validator.service';
 import { CssvSnapshotWriterService } from './cssv-snapshot-writer.service';
+
+interface CssvSnapshotRepairResult {
+  deletedRuns: number;
+  createdRuns: number;
+}
 
 @Injectable()
 export class CssvSnapshotOrchestratorService
@@ -35,6 +41,7 @@ export class CssvSnapshotOrchestratorService
     private readonly logReaderService: CssvSnapshotLogReaderService,
     private readonly queryService: CssvSnapshotQueryService,
     private readonly replayService: CssvSnapshotReplayService,
+    private readonly validatorService: CssvSnapshotValidatorService,
     private readonly writerService: CssvSnapshotWriterService
   ) {}
 
@@ -80,6 +87,28 @@ export class CssvSnapshotOrchestratorService
     }
   }
 
+  async runLockedRepairFromSnapshotDate(
+    snapshotDate: string
+  ): Promise<CssvSnapshotRepairResult> {
+    const runner = await this.lockService.tryAcquire();
+
+    if (!runner) {
+      this.logger.warn(
+        `CSSV snapshot job is already running, skipping repair from ${snapshotDate}`
+      );
+      return {
+        deletedRuns: 0,
+        createdRuns: 0
+      };
+    }
+
+    try {
+      return await this.repairFromSnapshotDate(snapshotDate, runner);
+    } finally {
+      await this.lockService.release(runner);
+    }
+  }
+
   private async backfillUntilCaughtUp(
     lockRunner: QueryRunner,
     trigger: 'startup' | 'cron' | 'manual'
@@ -117,6 +146,38 @@ export class CssvSnapshotOrchestratorService
     );
 
     return createdRuns;
+  }
+
+  private async repairFromSnapshotDate(
+    snapshotDate: string,
+    lockRunner: QueryRunner
+  ): Promise<CssvSnapshotRepairResult> {
+    await lockRunner.startTransaction();
+
+    try {
+      const deletedRuns = await this.writerService.deleteSnapshotDayAndLater(
+        snapshotDate,
+        lockRunner
+      );
+      await lockRunner.commitTransaction();
+
+      this.logger.warn(
+        `Deleted ${deletedRuns} CSSV snapshot day(s) from ${snapshotDate}; rebuilding from the last persisted day`
+      );
+
+      const createdRuns = await this.backfillUntilCaughtUp(lockRunner, 'manual');
+
+      return {
+        deletedRuns,
+        createdRuns
+      };
+    } catch (error) {
+      if (lockRunner.isTransactionActive) {
+        await lockRunner.rollbackTransaction();
+      }
+
+      throw error;
+    }
   }
 
   private async executeSnapshotWindow(
@@ -176,6 +237,11 @@ export class CssvSnapshotOrchestratorService
       `Persisted CSSV snapshot ${snapshotDate} with ${snapshotWalletRows.length} wallet row(s)`
     );
 
+    // Empty deployment-era snapshots are expected before the first cSSV activity.
+    if (snapshotWalletRows.length > 0 || totalStakedWeiSsv > 0n) {
+      this.triggerPostCommitValidation(snapshotRun.id, snapshotDate);
+    }
+
     return snapshotRun;
   }
 
@@ -223,5 +289,21 @@ export class CssvSnapshotOrchestratorService
 
       throw error;
     }
+  }
+
+  private triggerPostCommitValidation(
+    snapshotRunId: string,
+    snapshotDate: string
+  ): void {
+    // Validation is warn-only monitoring and must stay off the write path.
+    void this.validatorService
+      .validateSnapshot(snapshotRunId)
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+
+        this.logger.warn(
+          `CSSV snapshot validation failed for ${snapshotDate}: ${message}`
+        );
+      });
   }
 }
