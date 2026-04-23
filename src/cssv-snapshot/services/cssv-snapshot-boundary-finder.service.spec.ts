@@ -18,12 +18,12 @@ describe('CssvSnapshotBoundaryFinderService', () => {
       getBlockHeader: jest.fn(async (blockNumber: number) => ({
         number: blockNumber,
         timestamp: targetTimestamp - 60 + (blockNumber - 7_700) * 12
-      })),
-      getChainId: jest.fn()
+      }))
     };
     const configService = {
       cssvDeploymentBlock: 1_000,
-      expectedBlocksPerDay: 7_200
+      expectedBlocksPerDay: 7_200,
+      chainId: HOODI_CHAIN_ID
     };
     const service = new CssvSnapshotBoundaryFinderService(
       configService as any,
@@ -53,12 +53,12 @@ describe('CssvSnapshotBoundaryFinderService', () => {
       getBlockHeader: jest.fn(async (blockNumber: number) => ({
         number: blockNumber,
         timestamp: HOODI_GENESIS_TIMESTAMP + blockNumber * 12
-      })),
-      getChainId: jest.fn().mockResolvedValue(HOODI_CHAIN_ID)
+      }))
     };
     const configService = {
       cssvDeploymentBlock: deploymentBlock,
-      expectedBlocksPerDay: 7_200
+      expectedBlocksPerDay: 7_200,
+      chainId: HOODI_CHAIN_ID
     };
     const service = new CssvSnapshotBoundaryFinderService(
       configService as any,
@@ -101,12 +101,12 @@ describe('CssvSnapshotBoundaryFinderService', () => {
         number: 9_000,
         timestamp: targetTimestamp
       }),
-      getBlockHeader: jest.fn(),
-      getChainId: jest.fn()
+      getBlockHeader: jest.fn()
     };
     const configService = {
       cssvDeploymentBlock: 1_000,
-      expectedBlocksPerDay: 7_200
+      expectedBlocksPerDay: 7_200,
+      chainId: HOODI_CHAIN_ID
     };
     const service = new CssvSnapshotBoundaryFinderService(
       configService as any,

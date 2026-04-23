@@ -53,6 +53,7 @@ interface RpcLog {
 type MockCssvSnapshotConfig = Pick<
   CssvSnapshotConfigService,
   | 'rpcUrl'
+  | 'chainId'
   | 'viewsContractAddress'
   | 'stakingContractAddress'
   | 'cssvTokenAddress'
@@ -194,6 +195,7 @@ describe('CSSV snapshot RPC integration', () => {
     rpcUrl = `http://127.0.0.1:${addressInfo.port}`;
     const config: MockCssvSnapshotConfig = {
       rpcUrl,
+      chainId: 560048,
       viewsContractAddress: viewsAddress,
       stakingContractAddress: stakingAddress,
       cssvTokenAddress,

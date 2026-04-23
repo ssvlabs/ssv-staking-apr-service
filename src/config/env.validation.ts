@@ -77,6 +77,7 @@ export function validateEnvironment(env: EnvVars): EnvVars {
   assertPositiveIntegerEnv(env, 'LOG_CHUNK_SIZE_BLOCKS', { optional: true });
 
   if (env.CSSV_SNAPSHOT_ENABLED === 'true') {
+    assertPositiveIntegerEnv(env, 'CHAIN_ID');
     assertEnv(env, 'CSSV_TOKEN_ADDRESS');
     assertPositiveIntegerEnv(env, 'CSSV_DEPLOYMENT_BLOCK');
   }

@@ -2,6 +2,7 @@
 
 Local defaults in this service are currently wired to the Hoodi prod public contracts:
 
+- `CHAIN_ID=560048`
 - `STAKING_CONTRACT_ADDRESS=0x58410Bef803ECd7E63B23664C586A6DB72DAf59c`
 - `VIEWS_CONTRACT_ADDRESS=0x5AdDb3f1529C5ec70D77400499eE4bbF328368fe`
 - `CSSV_TOKEN_ADDRESS=0x6e1a5d27361c666f681af06535c8Ac773E571d4d`
@@ -10,6 +11,7 @@ Local defaults in this service are currently wired to the Hoodi prod public cont
 Required env vars for the snapshot module when `CSSV_SNAPSHOT_ENABLED=true`:
 
 - `RPC_URL`
+- `CHAIN_ID`
 - `STAKING_CONTRACT_ADDRESS`
 - `VIEWS_CONTRACT_ADDRESS`
 - `CSSV_TOKEN_ADDRESS`

@@ -13,7 +13,16 @@ export class CssvSnapshotBlockchainService implements OnModuleInit {
   private readonly viewsContract: ethers.Contract;
 
   constructor(private readonly config: CssvSnapshotConfigService) {
-    this.provider = new ethers.JsonRpcProvider(this.config.rpcUrl);
+    this.provider = new ethers.JsonRpcProvider(
+      this.config.rpcUrl,
+      this.config.chainId,
+      {
+        staticNetwork: true,
+        batchMaxCount: 100,
+        batchStallTime: 20,
+        batchMaxSize: 1 << 20 // 1 MB
+      }
+    );
     this.viewsContract = new ethers.Contract(
       this.config.viewsContractAddress,
       CSSV_SNAPSHOT_VIEWS_MINIMAL_ABI,
@@ -31,12 +40,6 @@ export class CssvSnapshotBlockchainService implements OnModuleInit {
 
   getProvider(): ethers.JsonRpcProvider {
     return this.provider;
-  }
-
-  async getChainId(): Promise<number> {
-    const network = await this.provider.getNetwork();
-
-    return Number(network.chainId);
   }
 
   async getLatestBlockNumber(): Promise<number> {

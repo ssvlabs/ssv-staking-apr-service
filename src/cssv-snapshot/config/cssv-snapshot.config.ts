@@ -19,6 +19,7 @@ function parseRequiredPositiveInteger(name: string, value: string): number {
 @Injectable()
 export class CssvSnapshotConfigService {
   readonly rpcUrl: string;
+  readonly chainId: number;
   readonly viewsContractAddress: string;
   readonly stakingContractAddress: string;
   readonly cssvTokenAddress: string;
@@ -30,6 +31,10 @@ export class CssvSnapshotConfigService {
 
   constructor(private readonly configService: ConfigService) {
     this.rpcUrl = this.getRequiredString('RPC_URL');
+    this.chainId = parseRequiredPositiveInteger(
+      'CHAIN_ID',
+      this.getRequiredString('CHAIN_ID')
+    );
     this.viewsContractAddress = ethers.getAddress(
       this.getRequiredString('VIEWS_CONTRACT_ADDRESS')
     );

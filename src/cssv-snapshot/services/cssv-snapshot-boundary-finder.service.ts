@@ -103,8 +103,7 @@ export class CssvSnapshotBoundaryFinderService {
     snapshotNoonTimestamp: number,
     latestBlockNumber: number
   ): Promise<number> {
-    const chainId = await this.blockchainService.getChainId();
-    const genesisTimestamp = this.getGenesisTimestamp(chainId);
+    const genesisTimestamp = this.getGenesisTimestamp(this.config.chainId);
     const secondsPerBlock = Math.max(
       1,
       Math.floor(86_400 / this.config.expectedBlocksPerDay)
