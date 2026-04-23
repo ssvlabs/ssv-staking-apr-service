@@ -37,10 +37,10 @@ export class CssvSnapshotWriterService {
       repository.create({
         snapshotDate: run.snapshotDate,
         snapshotTimeUtc: run.snapshotTimeUtc,
-        previousSnapshotBlock: this.toIntegerString(run.previousSnapshotBlock),
-        toBlockExclusive: this.toIntegerString(run.toBlockExclusive),
-        snapshotStateBlock: this.toIntegerString(run.snapshotStateBlock),
-        fromBlockInclusive: this.toIntegerString(run.fromBlockInclusive),
+        previousSnapshotBlock: this.toNumericString(run.previousSnapshotBlock),
+        toBlockExclusive: this.toNumericString(run.toBlockExclusive),
+        snapshotStateBlock: this.toNumericString(run.snapshotStateBlock),
+        fromBlockInclusive: this.toNumericString(run.fromBlockInclusive),
         totalStakedWeiSsv: this.toNumericString(run.totalStakedWeiSsv),
         walletCount: run.walletCount
       })
@@ -60,7 +60,7 @@ export class CssvSnapshotWriterService {
 
     await repository.insert(
       rows.map((row) => ({
-        snapshotRunId: this.toIntegerString(snapshotRunId),
+        snapshotRunId: this.toNumericString(snapshotRunId),
         walletAddress: ethers.getAddress(row.walletAddress),
         balanceWeiSsv: this.toNumericString(row.balanceWeiSsv),
         grossClaimableEthWei: this.toNumericString(row.grossClaimableEthWei),
@@ -102,9 +102,5 @@ export class CssvSnapshotWriterService {
 
   private toNumericString(value: CssvBigIntLike): string {
     return typeof value === 'bigint' ? value.toString() : `${value}`;
-  }
-
-  private toIntegerString(value: CssvBigIntLike): string {
-    return this.toNumericString(value);
   }
 }

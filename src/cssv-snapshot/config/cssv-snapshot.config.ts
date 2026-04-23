@@ -18,7 +18,6 @@ function parseRequiredPositiveInteger(name: string, value: string): number {
 
 @Injectable()
 export class CssvSnapshotConfigService {
-  readonly enabled: boolean;
   readonly rpcUrl: string;
   readonly viewsContractAddress: string;
   readonly stakingContractAddress: string;
@@ -30,7 +29,6 @@ export class CssvSnapshotConfigService {
   readonly cronTimeZone: string;
 
   constructor(private readonly configService: ConfigService) {
-    this.enabled = this.configService.get<string>('CSSV_SNAPSHOT_ENABLED') === 'true';
     this.rpcUrl = this.getRequiredString('RPC_URL');
     this.viewsContractAddress = ethers.getAddress(
       this.getRequiredString('VIEWS_CONTRACT_ADDRESS')

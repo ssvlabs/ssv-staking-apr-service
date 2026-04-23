@@ -37,7 +37,7 @@ export class CssvSnapshotOrchestratorService implements OnModuleInit {
 
     try {
       this.logger.log(
-        `CSSV snapshot cron triggered for token ${this.config.cssvTokenAddress} via staking ${this.blockchainService.getStakingContractAddress()}; implementation pending`
+        `CSSV snapshot cron triggered for token ${this.config.cssvTokenAddress} via staking ${this.config.stakingContractAddress}; implementation pending`
       );
     } finally {
       await this.lockService.release(runner);

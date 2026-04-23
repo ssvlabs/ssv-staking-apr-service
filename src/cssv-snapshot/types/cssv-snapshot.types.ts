@@ -23,15 +23,6 @@ export interface CssvSnapshotRunSeed {
   walletCount: number;
 }
 
-export interface CssvSnapshotWalletSeed {
-  walletAddress: string;
-  balanceWeiSsv: string;
-  grossClaimableEthWei: string;
-  dailyRewardAccrualWei: string;
-  claimedInWindowWei: string;
-  burnedDustInWindowWei: string;
-}
-
 export interface CssvSnapshotWalletRowInput {
   walletAddress: string;
   balanceWeiSsv: CssvBigIntLike;
@@ -39,6 +30,20 @@ export interface CssvSnapshotWalletRowInput {
   dailyRewardAccrualWei: CssvBigIntLike;
   claimedInWindowWei: CssvBigIntLike;
   burnedDustInWindowWei: CssvBigIntLike;
+}
+
+export interface CssvSnapshotBaseEvent {
+  transactionHash: string;
+  blockNumber: number;
+  transactionIndex: number;
+  logIndex: number;
+}
+
+export interface CssvTransferEvent extends CssvSnapshotBaseEvent {
+  kind: 'transfer';
+  from: string;
+  to: string;
+  amountWei: bigint;
 }
 
 export interface CssvWalletState {
@@ -49,17 +54,33 @@ export interface CssvWalletState {
   burnedDustInWindowWei: bigint;
 }
 
-export interface CssvRewardsSettledEvent {
-  transactionHash: string;
-  logIndex: number;
+export interface CssvRewardsSettledEvent extends CssvSnapshotBaseEvent {
+  kind: 'rewardsSettled';
   walletAddress: string;
+  pendingWei: bigint;
   accruedWei: bigint;
   userIndex: bigint;
 }
 
-export interface CssvRewardsClaimedEvent {
-  transactionHash: string;
-  logIndex: number;
+export interface CssvRewardsClaimedEvent extends CssvSnapshotBaseEvent {
+  kind: 'rewardsClaimed';
   walletAddress: string;
   payoutWei: bigint;
+}
+
+export type CssvSnapshotEvent =
+  | CssvTransferEvent
+  | CssvRewardsSettledEvent
+  | CssvRewardsClaimedEvent;
+
+export interface CssvClaimEventPair {
+  transactionHash: string;
+  walletAddress: string;
+  rewardsSettled: CssvRewardsSettledEvent;
+  rewardsClaimed: CssvRewardsClaimedEvent;
+}
+
+export interface CssvSnapshotEventReadResult {
+  events: CssvSnapshotEvent[];
+  pairedClaims: CssvClaimEventPair[];
 }
