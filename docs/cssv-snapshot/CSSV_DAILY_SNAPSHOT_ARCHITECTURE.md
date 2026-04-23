@@ -532,6 +532,7 @@ Persist wallet row if any is true:
 - `gross_claimable_eth_wei > 0`
 - `claimed_in_window_wei > 0`
 - `burned_dust_in_window_wei > 0`
+- `daily_reward_accrual_wei != 0`
 
 Reason:
 
@@ -539,8 +540,11 @@ Reason:
 - still keeps wallets that claimed during day
 - still keeps wallets with zero balance but remaining claimable rewards
 - still keeps wallets where tiny dust was burned during claim
+- still keeps a terminal history row when a wallet ends the day at zero state but its daily accrual is non-zero
 
-If all 4 are zero, wallet can be omitted from snapshot.
+**Edit note (April 23, 2026):** the implemented behavior intentionally keeps rows where the end-of-day state is zero but `daily_reward_accrual_wei != 0`, so the API preserves that wallet's last meaningful accrual day instead of silently dropping it.
+
+If all 5 fields above are zero, wallet can be omitted from snapshot.
 
 `burned_dust_in_window_wei` is kept so the stored daily accrual stays exactly aligned with contract accounting. It is not needed to derive the next day’s seed state, but it is useful to explain why:
 
