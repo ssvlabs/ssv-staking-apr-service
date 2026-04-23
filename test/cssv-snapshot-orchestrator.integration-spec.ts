@@ -1,9 +1,13 @@
 import { createServer, IncomingMessage, Server } from 'node:http';
 import { AddressInfo, Socket } from 'node:net';
-import { Logger } from '@nestjs/common';
+import { INestApplication, Logger, ValidationPipe } from '@nestjs/common';
+import { Test, TestingModule } from '@nestjs/testing';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { ethers } from 'ethers';
 import { DataSource } from 'typeorm';
 import { GenericContainer, StartedTestContainer, Wait } from 'testcontainers';
+import request from 'supertest';
+import { App } from 'supertest/types';
 import {
   AprSample,
   CssvSnapshotRun,
@@ -16,12 +20,14 @@ import { HOODI_CHAIN_ID } from '../src/cssv-snapshot/constants/cssv-snapshot.con
 import { CSSV_TOKEN_MINIMAL_ABI } from '../src/cssv-snapshot/abis/cssv-token.abi';
 import { CSSV_SNAPSHOT_STAKING_MINIMAL_ABI } from '../src/cssv-snapshot/abis/ssv-staking.abi';
 import { CSSV_SNAPSHOT_VIEWS_MINIMAL_ABI } from '../src/cssv-snapshot/abis/ssv-views.abi';
+import { CssvSnapshotController } from '../src/cssv-snapshot/controllers/cssv-snapshot.controller';
 import { CssvSnapshotAdvisoryLockService } from '../src/cssv-snapshot/services/cssv-snapshot-advisory-lock.service';
 import { CssvSnapshotBlockchainService } from '../src/cssv-snapshot/services/cssv-snapshot-blockchain.service';
 import { CssvSnapshotBoundaryFinderService } from '../src/cssv-snapshot/services/cssv-snapshot-boundary-finder.service';
 import { CssvSnapshotLogReaderService } from '../src/cssv-snapshot/services/cssv-snapshot-log-reader.service';
 import { CssvSnapshotOrchestratorService } from '../src/cssv-snapshot/services/cssv-snapshot-orchestrator.service';
 import { CssvSnapshotQueryService } from '../src/cssv-snapshot/services/cssv-snapshot-query.service';
+import { CssvSnapshotReadService } from '../src/cssv-snapshot/services/cssv-snapshot-read.service';
 import { CssvSnapshotReplayService } from '../src/cssv-snapshot/services/cssv-snapshot-replay.service';
 import { CssvSnapshotValidatorService } from '../src/cssv-snapshot/services/cssv-snapshot-validator.service';
 import { CssvSnapshotWriterService } from '../src/cssv-snapshot/services/cssv-snapshot-writer.service';
@@ -215,6 +221,7 @@ describe('CSSV snapshot orchestrator integration', () => {
   let chainState: MockChainState;
   let container: StartedTestContainer;
   let dataSource: DataSource;
+  let app: INestApplication<App>;
   let server: Server;
   let sockets: Set<Socket>;
   let rpcUrl: string;
@@ -224,6 +231,9 @@ describe('CSSV snapshot orchestrator integration', () => {
   let blockchainService: CssvSnapshotBlockchainService;
   let validatorService: CssvSnapshotValidatorService;
   let orchestratorService: CssvSnapshotOrchestratorService;
+  const orchestratorControllerMock = {
+    runLockedRepairFromSnapshotDate: jest.fn()
+  };
 
   beforeAll(async () => {
     container = await new GenericContainer('postgres:16-alpine')
@@ -355,9 +365,48 @@ describe('CSSV snapshot orchestrator integration', () => {
       validatorService,
       writerService
     );
+
+    const apiModule: TestingModule = await Test.createTestingModule({
+      imports: [
+        TypeOrmModule.forRoot({
+          type: 'postgres',
+          host: container.getHost(),
+          port: container.getMappedPort(5432),
+          username: 'ssv_user',
+          password: 'ssv_password',
+          database: 'ssv_apr_test',
+          entities: [CssvSnapshotRun, CssvSnapshotWallet],
+          synchronize: false
+        }),
+        TypeOrmModule.forFeature([CssvSnapshotRun, CssvSnapshotWallet])
+      ],
+      controllers: [CssvSnapshotController],
+      providers: [
+        CssvSnapshotQueryService,
+        CssvSnapshotReadService,
+        {
+          provide: CssvSnapshotOrchestratorService,
+          useValue: orchestratorControllerMock
+        }
+      ]
+    }).compile();
+
+    app = apiModule.createNestApplication();
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        transform: true
+      })
+    );
+    app.setGlobalPrefix('api');
+    await app.init();
   });
 
   afterAll(async () => {
+    if (app) {
+      await app.close();
+    }
+
     blockchainService.getProvider().destroy();
     await new Promise((resolve) => setImmediate(resolve));
 
@@ -533,6 +582,33 @@ describe('CSSV snapshot orchestrator integration', () => {
     );
   });
 
+  it('serves freshly persisted snapshots through the api read path', async () => {
+    configureChainStateThroughDayOne();
+
+    await expect(orchestratorService.runLockedBackfill('manual')).resolves.toBe(1);
+
+    const response = await request(app.getHttpServer())
+      .get(`/api/apr/snapshots/${userA.toLowerCase()}`)
+      .expect(200);
+
+    expect(response.body).toEqual({
+      ownerAddress: userA,
+      snapshots: [
+        {
+          snapshotDate: '2026-04-17',
+          snapshotTimeUtc: '2026-04-17T12:00:00.000Z',
+          fromBlock: 95,
+          toBlock: 104,
+          balanceWeiSsv: '40',
+          dailyRewardAccrualWei: '100',
+          grossClaimableEthWei: '60',
+          claimedInWindowWei: '40',
+          burnedDustInWindowWei: '0'
+        }
+      ]
+    });
+  });
+
   it('backfills multiple days in one locked run', async () => {
     configureChainStateThroughDayThree();
 
@@ -694,6 +770,33 @@ describe('CSSV snapshot orchestrator integration', () => {
       snapshotDate: '2026-04-18'
     });
     expect(runCountAfterRecovery.count).toBe(2);
+  });
+
+  it('releases the advisory lock after a failed snapshot run', async () => {
+    configureChainStateThroughDayOne();
+    await orchestratorService.runLockedBackfill('manual');
+
+    configureChainStateThroughDayTwo();
+    await waitForProviderCacheWindow();
+
+    const bulkInsertSpy = jest
+      .spyOn(writerService, 'bulkInsertWalletRows')
+      .mockRejectedValueOnce(new Error('forced bulk insert failure'));
+
+    await expect(orchestratorService.runLockedBackfill('manual')).rejects.toThrow(
+      'forced bulk insert failure'
+    );
+
+    const lockRunner = await lockService.tryAcquire();
+
+    expect(lockRunner).not.toBeNull();
+
+    if (!lockRunner) {
+      throw new Error('Expected advisory lock to be released after failed run');
+    }
+
+    await lockService.release(lockRunner);
+    bulkInsertSpy.mockRestore();
   });
 
   it('skips execution when the advisory lock is already held', async () => {
