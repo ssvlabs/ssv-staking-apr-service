@@ -4,8 +4,10 @@ dist
 .env
 .env.example
 *.md
+docs
 .gitignore
 .eslintrc.js
 .prettierrc
 coverage
 test
+.DS_Store
