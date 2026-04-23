@@ -2,7 +2,7 @@
 
 Scope assumptions:
 
-- Architecture in [CSSV_DAILY_SNAPSHOT_ARCHITECTURE.md](/Users/stefanarnaudov/Desktop/ssv-main/modules/ssv-staking-apr-service/ssv-rewards-job/CSSV_DAILY_SNAPSHOT_ARCHITECTURE.md) is frozen.
+- Architecture in [CSSV_DAILY_SNAPSHOT_ARCHITECTURE.md](./CSSV_DAILY_SNAPSHOT_ARCHITECTURE.md) is frozen.
 - Scope here is **development only**.
 - The feature is implemented inside **`ssv-staking-apr-service`**.
 - No new deployment shape is required for v1.
@@ -21,7 +21,7 @@ Target by **2026-04-27**:
 
 ## 2026-04-16 (Thu) — Scaffold NestJS modules and freeze interfaces
 
-- [ ] Create `ssv-rewards-job` working area inside the service.
+- [ ] Create a dedicated cSSV snapshot working area inside the service.
 - [ ] Decide module shape:
   - extend `AprCalculationService`
   - or create dedicated snapshot module/services
@@ -275,7 +275,7 @@ Exit criteria:
 - [ ] Final bugfix pass from testing feedback.
 - [ ] Review code for simplification opportunities without changing frozen architecture.
 - [ ] Clean up logs, error wrapping, and comments.
-- [ ] Verify docs in `ssv-rewards-job` are consistent:
+- [ ] Verify docs in `docs/cssv-snapshot` are consistent:
   - architecture
   - tasks
   - config notes if added
