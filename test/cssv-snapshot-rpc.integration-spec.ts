@@ -68,9 +68,10 @@ describe('CSSV snapshot RPC integration', () => {
   const viewsAddress = '0x5AdDb3f1529C5ec70D77400499eE4bbF328368fe';
   const stakingAddress = '0x58410Bef803ECd7E63B23664C586A6DB72DAf59c';
   const cssvTokenAddress = '0x6e1a5d27361c666f681af06535c8Ac773E571d4d';
-  const userA = '0x1111111111111111111111111111111111111111';
-  const userB = '0x2222222222222222222222222222222222222222';
-  const totalStakedAt104 = 123_456_789n;
+const userA = '0x1111111111111111111111111111111111111111';
+const userB = '0x2222222222222222222222222222222222222222';
+const chainId = 560048;
+const totalStakedAt104 = 123_456_789n;
   const previewClaimableAt104 = 987_654_321n;
   const blocks = new Map<number, MockBlock>([
     [95, { number: 95, timestamp: Math.floor(Date.parse('2026-04-17T10:00:00.000Z') / 1000) }],
@@ -381,7 +382,7 @@ describe('CSSV snapshot RPC integration', () => {
 
     switch (input.method) {
       case 'eth_chainId':
-        return success(input.id, toHex(1));
+        return success(input.id, toHex(chainId));
       case 'eth_blockNumber':
         return success(input.id, toHex(latestBlockNumber));
       case 'eth_getBlockByNumber':
