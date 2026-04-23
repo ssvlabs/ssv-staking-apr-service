@@ -167,7 +167,7 @@ export class AprCalculationService {
     try {
       const [networkFeeWei, prices] = await Promise.all([
         this.blockchainService.getNetworkFee(),
-        this.coinGeckoService.getPrices()
+        this.coinGeckoService.getPricesFresh()
       ]);
 
       const timestamp = new Date();
