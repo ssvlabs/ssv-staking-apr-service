@@ -51,12 +51,12 @@ export class CssvSnapshotBoundaryFinderService {
     }
 
     // If we already have a snapshot, the next window starts exactly at the previous
-    // window's exclusive end. Otherwise we bootstrap from the cSSV deployment block.
+    // window's exclusive end. Otherwise we bootstrap from the configured snapshot start block.
     // The initial block guess is only a search heuristic; the final boundary always
     // comes from timestamp refinement + binary search to the first block after noon.
     const fromBlockInclusive = previousSnapshotRun
       ? Number(previousSnapshotRun.toBlockExclusive)
-      : this.config.cssvDeploymentBlock;
+      : this.config.cssvSnapshotStartBlock;
     const approximateBlock = previousSnapshotRun
       ? this.getApproximateNextSnapshotBlock(
           fromBlockInclusive,
@@ -82,17 +82,17 @@ export class CssvSnapshotBoundaryFinderService {
   }
 
   private async getFirstSnapshotDate(): Promise<string> {
-    const deploymentBlock = await this.blockchainService.getBlockHeader(
-      this.config.cssvDeploymentBlock
+    const startBlock = await this.blockchainService.getBlockHeader(
+      this.config.cssvSnapshotStartBlock
     );
-    const deploymentTimestamp = deploymentBlock.timestamp;
-    const deploymentDate = new Date(deploymentTimestamp * 1000);
-    const sameDaySnapshotDate = this.formatUtcDate(deploymentDate);
+    const startTimestamp = startBlock.timestamp;
+    const startDate = new Date(startTimestamp * 1000);
+    const sameDaySnapshotDate = this.formatUtcDate(startDate);
     const sameDayNoonTimestamp =
       this.getSnapshotNoonTimestamp(sameDaySnapshotDate);
 
-    // The first snapshot day is the first noon boundary at or after deployment.
-    if (deploymentTimestamp <= sameDayNoonTimestamp) {
+    // The first snapshot day is the first noon boundary at or after the configured start block.
+    if (startTimestamp <= sameDayNoonTimestamp) {
       return sameDaySnapshotDate;
     }
 
@@ -115,7 +115,7 @@ export class CssvSnapshotBoundaryFinderService {
 
     return Math.min(
       latestBlockNumber,
-      Math.max(this.config.cssvDeploymentBlock, estimatedFromGenesis)
+      Math.max(this.config.cssvSnapshotStartBlock, estimatedFromGenesis)
     );
   }
 

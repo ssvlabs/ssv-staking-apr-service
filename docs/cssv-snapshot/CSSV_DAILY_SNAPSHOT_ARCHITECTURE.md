@@ -82,7 +82,16 @@ Normalize all wallet addresses to canonical EIP-55 checksum form before storing 
 
 For internal map/set keys, prefer the canonical 20-byte address value or the canonical checksummed string produced from it.
 
-On startup, the service backfills from **`CSSVToken` deployment block** until the latest eligible `12:00 UTC` snapshot.
+On startup, the service backfills from a configured **snapshot start block** until the latest eligible `12:00 UTC` snapshot.
+
+**Edit note (April 23, 2026):** on mainnet, the effective start point for snapshot reads is the **smart contract upgrade block `24920727`**, not raw cSSV deployment. Historical `SSVNetworkViews.totalStaked()` reverts before that block.
+
+We explicitly checked whether any cSSV transfer history exists before the upgrade boundary:
+
+- direct RPC log scan found **zero** `CSSVToken.Transfer` logs in `[24719189, 24920726]`
+- manual Etherscan inspection shows the **first observed `Transfer` event** at block `24921023`
+
+So starting snapshots at the upgrade block does **not** lose any snapshot-relevant token transfer history.
 
 ---
 
@@ -197,7 +206,7 @@ Use previous day height as approximation, then refine by timestamp.
 Recommended finder:
 
 1. start from `prevSnapshotBlock + EXPECTED_BLOCKS_PER_DAY` as approximation
-2. if no previous snapshot exists yet, estimate from `CSSVToken` deployment block / genesis math
+2. if no previous snapshot exists yet, estimate from configured snapshot start block / genesis math
 3. refine with block timestamps
 4. binary search to **first** block with timestamp `> 12:00:00 UTC`
 
@@ -353,7 +362,7 @@ Query latest row from `cssv_snapshot_runs`.
 
 If none exists:
 
-- start from `CSSVToken` deployment block
+- start from configured snapshot start block
 - first snapshot day is first eligible `12:00 UTC` boundary after deployment
 
 ### 2. Backfill loop

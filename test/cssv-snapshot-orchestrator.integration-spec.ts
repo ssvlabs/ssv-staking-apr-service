@@ -84,7 +84,7 @@ type MockCssvSnapshotConfig = Pick<
   | 'viewsContractAddress'
   | 'stakingContractAddress'
   | 'cssvTokenAddress'
-  | 'cssvDeploymentBlock'
+  | 'cssvSnapshotStartBlock'
   | 'expectedBlocksPerDay'
   | 'logChunkSizeBlocks'
   | 'cronExpression'
@@ -99,7 +99,7 @@ describe('CSSV snapshot orchestrator integration', () => {
   const cssvTokenAddress = '0x6e1a5d27361c666f681af06535c8Ac773E571d4d';
   const userA = ethers.getAddress('0x1111111111111111111111111111111111111111');
   const userB = ethers.getAddress('0x2222222222222222222222222222222222222222');
-  const deploymentBlock = 95;
+  const snapshotStartBlock = 95;
   const firstSnapshotStateBlock = 104;
   const secondSnapshotStateBlock = 204;
   const thirdSnapshotStateBlock = 304;
@@ -322,7 +322,7 @@ describe('CSSV snapshot orchestrator integration', () => {
       viewsContractAddress: viewsAddress,
       stakingContractAddress: stakingAddress,
       cssvTokenAddress,
-      cssvDeploymentBlock: deploymentBlock,
+      cssvSnapshotStartBlock: snapshotStartBlock,
       expectedBlocksPerDay: 100,
       logChunkSizeBlocks: 50,
       cronExpression: '15 12 * * *',

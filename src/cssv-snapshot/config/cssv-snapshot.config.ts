@@ -23,7 +23,7 @@ export class CssvSnapshotConfigService {
   readonly viewsContractAddress: string;
   readonly stakingContractAddress: string;
   readonly cssvTokenAddress: string;
-  readonly cssvDeploymentBlock: number;
+  readonly cssvSnapshotStartBlock: number;
   readonly expectedBlocksPerDay: number;
   readonly logChunkSizeBlocks: number;
   readonly cronExpression: string;
@@ -44,9 +44,9 @@ export class CssvSnapshotConfigService {
     this.cssvTokenAddress = ethers.getAddress(
       this.getRequiredString('CSSV_TOKEN_ADDRESS')
     );
-    this.cssvDeploymentBlock = parseRequiredPositiveInteger(
-      'CSSV_DEPLOYMENT_BLOCK',
-      this.getRequiredString('CSSV_DEPLOYMENT_BLOCK')
+    this.cssvSnapshotStartBlock = parseRequiredPositiveInteger(
+      'CSSV_SNAPSHOT_START_BLOCK',
+      this.getRequiredString('CSSV_SNAPSHOT_START_BLOCK')
     );
     this.expectedBlocksPerDay = EXPECTED_BLOCKS_PER_DAY;
     this.logChunkSizeBlocks = this.getOptionalPositiveInteger(

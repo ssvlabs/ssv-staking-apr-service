@@ -57,7 +57,7 @@ type MockCssvSnapshotConfig = Pick<
   | 'viewsContractAddress'
   | 'stakingContractAddress'
   | 'cssvTokenAddress'
-  | 'cssvDeploymentBlock'
+  | 'cssvSnapshotStartBlock'
   | 'expectedBlocksPerDay'
   | 'logChunkSizeBlocks'
   | 'cronExpression'
@@ -200,7 +200,7 @@ const totalStakedAt104 = 123_456_789n;
       viewsContractAddress: viewsAddress,
       stakingContractAddress: stakingAddress,
       cssvTokenAddress,
-      cssvDeploymentBlock: 95,
+      cssvSnapshotStartBlock: 95,
       expectedBlocksPerDay: 5,
       logChunkSizeBlocks: 2,
       cronExpression: '15 12 * * *',
@@ -307,7 +307,7 @@ const totalStakedAt104 = 123_456_789n;
     });
   });
 
-  it('derives the first eligible snapshot window from deployment block through real RPC calls', async () => {
+  it('derives the first eligible snapshot window from snapshot start block through real RPC calls', async () => {
     await expect(boundaryFinderService.findNextWindow(null)).resolves.toEqual({
       snapshotDate: '2026-04-17',
       fromBlockInclusive: 95,

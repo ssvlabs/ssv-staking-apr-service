@@ -79,7 +79,7 @@ export function validateEnvironment(env: EnvVars): EnvVars {
   if (env.CSSV_SNAPSHOT_ENABLED === 'true') {
     assertPositiveIntegerEnv(env, 'CHAIN_ID');
     assertEnv(env, 'CSSV_TOKEN_ADDRESS');
-    assertPositiveIntegerEnv(env, 'CSSV_DEPLOYMENT_BLOCK');
+    assertPositiveIntegerEnv(env, 'CSSV_SNAPSHOT_START_BLOCK');
   }
 
   return env;

@@ -1,12 +1,22 @@
 # cSSV Snapshot Local Setup
 
-Local defaults in this service are currently wired to the Hoodi prod public contracts:
+Current local mainnet defaults for Docker/local testing:
 
-- `CHAIN_ID=560048`
-- `STAKING_CONTRACT_ADDRESS=0x58410Bef803ECd7E63B23664C586A6DB72DAf59c`
-- `VIEWS_CONTRACT_ADDRESS=0x5AdDb3f1529C5ec70D77400499eE4bbF328368fe`
-- `CSSV_TOKEN_ADDRESS=0x6e1a5d27361c666f681af06535c8Ac773E571d4d`
-- `CSSV_DEPLOYMENT_BLOCK=2219319`
+- `RPC_URL=http://localhost:8545` for a host-side port-forward
+- `CHAIN_ID=1`
+- `STAKING_CONTRACT_ADDRESS=0xDD9BC35aE942eF0cFa76930954a156B3fF30a4E1`
+- `VIEWS_CONTRACT_ADDRESS=0xafE830B6Ee262ba11cce5F32fDCd760FFE6a66e4`
+- `CSSV_TOKEN_ADDRESS=0xe018D31F120A637828F46aFD6c64EC099d960546`
+- `CSSV_SNAPSHOT_START_BLOCK=24920727`
+
+**Edit note (April 23, 2026):** on mainnet, snapshots intentionally start at the smart contract upgrade block `24920727`.
+
+We explicitly checked the pre-upgrade token history:
+
+- direct RPC log scan found zero `CSSVToken.Transfer` logs before `24920727`
+- manual Etherscan inspection shows the first observed `Transfer` event at block `24921023`
+
+So no snapshot-relevant token transfer history is lost by skipping the earlier cSSV-only period.
 
 Required env vars for the snapshot module when `CSSV_SNAPSHOT_ENABLED=true`:
 
@@ -15,7 +25,7 @@ Required env vars for the snapshot module when `CSSV_SNAPSHOT_ENABLED=true`:
 - `STAKING_CONTRACT_ADDRESS`
 - `VIEWS_CONTRACT_ADDRESS`
 - `CSSV_TOKEN_ADDRESS`
-- `CSSV_DEPLOYMENT_BLOCK`
+- `CSSV_SNAPSHOT_START_BLOCK`
 
 Optional:
 

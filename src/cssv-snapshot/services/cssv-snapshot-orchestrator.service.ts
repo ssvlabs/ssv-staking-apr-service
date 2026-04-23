@@ -47,7 +47,7 @@ export class CssvSnapshotOrchestratorService
 
   onModuleInit(): void {
     this.logger.log(
-      `CSSV snapshot module enabled for token ${this.config.cssvTokenAddress}, deploymentBlock=${this.config.cssvDeploymentBlock}, expectedBlocksPerDay=${this.config.expectedBlocksPerDay}, logChunkSizeBlocks=${this.config.logChunkSizeBlocks}, cron="${this.config.cronExpression}" (${this.config.cronTimeZone})`
+      `CSSV snapshot module enabled for token ${this.config.cssvTokenAddress}, snapshotStartBlock=${this.config.cssvSnapshotStartBlock}, expectedBlocksPerDay=${this.config.expectedBlocksPerDay}, logChunkSizeBlocks=${this.config.logChunkSizeBlocks}, cron="${this.config.cronExpression}" (${this.config.cronTimeZone})`
     );
   }
 
@@ -264,7 +264,7 @@ export class CssvSnapshotOrchestratorService
           snapshotTimeUtc: new Date(`${snapshotDate}T12:00:00.000Z`),
           previousSnapshotBlock: previousSnapshotRun
             ? previousSnapshotRun.toBlockExclusive
-            : this.config.cssvDeploymentBlock,
+            : this.config.cssvSnapshotStartBlock,
           fromBlockInclusive,
           toBlockExclusive,
           snapshotStateBlock,

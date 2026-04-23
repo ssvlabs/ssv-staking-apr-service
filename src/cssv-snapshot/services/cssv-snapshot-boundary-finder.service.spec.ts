@@ -21,7 +21,7 @@ describe('CssvSnapshotBoundaryFinderService', () => {
       }))
     };
     const configService = {
-      cssvDeploymentBlock: 1_000,
+      cssvSnapshotStartBlock: 1_000,
       expectedBlocksPerDay: 7_200,
       chainId: HOODI_CHAIN_ID
     };
@@ -42,8 +42,8 @@ describe('CssvSnapshotBoundaryFinderService', () => {
     });
   });
 
-  it('derives the first eligible snapshot window from deployment block and genesis math', async () => {
-    const deploymentBlock = 1_000;
+  it('derives the first eligible snapshot window from snapshot start block and genesis math', async () => {
+    const snapshotStartBlock = 1_000;
     const latestBlockNumber = 20_000;
     const blockchainService = {
       getLatestBlockHeader: jest.fn().mockResolvedValue({
@@ -56,7 +56,7 @@ describe('CssvSnapshotBoundaryFinderService', () => {
       }))
     };
     const configService = {
-      cssvDeploymentBlock: deploymentBlock,
+      cssvSnapshotStartBlock: snapshotStartBlock,
       expectedBlocksPerDay: 7_200,
       chainId: HOODI_CHAIN_ID
     };
@@ -64,7 +64,7 @@ describe('CssvSnapshotBoundaryFinderService', () => {
       configService as any,
       blockchainService as any
     );
-    const deploymentTimestamp = HOODI_GENESIS_TIMESTAMP + deploymentBlock * 12;
+    const deploymentTimestamp = HOODI_GENESIS_TIMESTAMP + snapshotStartBlock * 12;
     const deploymentDate = new Date(deploymentTimestamp * 1000);
     const sameDaySnapshotDate = deploymentDate.toISOString().slice(0, 10);
     const sameDayNoonTimestamp = Math.floor(
@@ -86,7 +86,7 @@ describe('CssvSnapshotBoundaryFinderService', () => {
 
     await expect(service.findNextWindow(null)).resolves.toEqual({
       snapshotDate: expectedSnapshotDate,
-      fromBlockInclusive: deploymentBlock,
+      fromBlockInclusive: snapshotStartBlock,
       toBlockExclusive: expectedToBlockExclusive,
       snapshotStateBlock: expectedToBlockExclusive - 1
     });
@@ -104,7 +104,7 @@ describe('CssvSnapshotBoundaryFinderService', () => {
       getBlockHeader: jest.fn()
     };
     const configService = {
-      cssvDeploymentBlock: 1_000,
+      cssvSnapshotStartBlock: 1_000,
       expectedBlocksPerDay: 7_200,
       chainId: HOODI_CHAIN_ID
     };
