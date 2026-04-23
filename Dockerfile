@@ -5,6 +5,7 @@ WORKDIR /app
 
 COPY package*.json ./
 COPY pnpm-lock.yaml ./
+COPY pnpm-workspace.yaml ./
 
 # Install pnpm and dependencies
 RUN npm install -g pnpm
@@ -26,6 +27,7 @@ ENV NODE_ENV=production
 # Copy package files
 COPY package*.json ./
 COPY pnpm-lock.yaml ./
+COPY pnpm-workspace.yaml ./
 
 # Install pnpm and production dependencies only
 RUN npm install -g pnpm
