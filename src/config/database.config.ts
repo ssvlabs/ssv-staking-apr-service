@@ -17,7 +17,7 @@ export const getDatabaseConfig = (
   database: configService.get<string>('DATABASE_NAME'),
   entities: [AprSample, CssvSnapshotRun, CssvSnapshotWallet],
   migrations: [__dirname + '/../migrations/*.{ts,js}'],
-  migrationsRun: configService.get<string>('TYPEORM_MIGRATIONS_RUN') === 'true',
+  migrationsRun: true,
   synchronize: false,
   logging: configService.get<string>('NODE_ENV') === 'development'
 });
