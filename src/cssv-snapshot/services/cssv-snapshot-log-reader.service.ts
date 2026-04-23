@@ -217,12 +217,16 @@ export class CssvSnapshotLogReaderService {
         chunkFromBlock + this.config.logChunkSizeBlocks
       );
       // Provider getLogs uses an inclusive end block, while our snapshot window is half-open.
-      const chunkLogs = await provider.getLogs({
-        address,
-        topics: [topicHash],
-        fromBlock: chunkFromBlock,
-        toBlock: chunkToExclusive - 1
-      });
+      const chunkLogs = await this.blockchainService.runRpcRequestWithRetry(
+        `eth_getLogs ${address} [${chunkFromBlock}, ${chunkToExclusive})`,
+        () =>
+          provider.getLogs({
+            address,
+            topics: [topicHash],
+            fromBlock: chunkFromBlock,
+            toBlock: chunkToExclusive - 1
+          })
+      );
 
       logs.push(...chunkLogs);
     }

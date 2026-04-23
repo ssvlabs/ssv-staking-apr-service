@@ -13,7 +13,10 @@ describe('CssvSnapshotLogReaderService', () => {
     getLogs: jest.fn()
   };
   const blockchainService = {
-    getProvider: jest.fn(() => provider)
+    getProvider: jest.fn(() => provider),
+    runRpcRequestWithRetry: jest.fn(
+      async (_description: string, operation: () => Promise<unknown>) => operation()
+    )
   };
   const configService = {
     cssvTokenAddress,
@@ -38,6 +41,7 @@ describe('CssvSnapshotLogReaderService', () => {
 
   beforeEach(() => {
     provider.getLogs.mockReset();
+    blockchainService.runRpcRequestWithRetry.mockClear();
   });
 
   it('reads chunked logs and globally sorts mixed event types by block, tx index, and log index', async () => {
@@ -232,6 +236,84 @@ describe('CssvSnapshotLogReaderService', () => {
         })
       })
     ]);
+  });
+
+  it('retries only the failed log chunk request', async () => {
+    let transferAttempts = 0;
+
+    blockchainService.runRpcRequestWithRetry.mockImplementation(
+      async (_description: string, operation: () => Promise<unknown>) => {
+        let retryCount = 0;
+
+        while (true) {
+          try {
+            return await operation();
+          } catch (error) {
+            if (
+              retryCount >= 1 ||
+              !String(error).includes('Too Many Requests')
+            ) {
+              throw error;
+            }
+
+            retryCount += 1;
+          }
+        }
+      }
+    );
+
+    provider.getLogs.mockImplementation(async (filter: ethers.Filter) => {
+      const address = filter.address as string;
+      const topicHash = filter.topics?.[0] as string;
+
+      if (
+        address === cssvTokenAddress &&
+        topicHash === transferEvent.topicHash
+      ) {
+        transferAttempts += 1;
+
+        if (transferAttempts === 1) {
+          throw new Error('Too Many Requests');
+        }
+
+        return [
+          createTransferLog({
+            address,
+            transactionHash:
+              '0x0000000000000000000000000000000000000000000000000000000000000abc',
+            blockNumber: 300,
+            transactionIndex: 0,
+            logIndex: 0,
+            from: userA,
+            to: userB,
+            amountWei: 7n
+          })
+        ];
+      }
+
+      return [];
+    });
+
+    const result = await service.readSnapshotEvents(300, 302);
+
+    const callsByTopic = provider.getLogs.mock.calls.reduce(
+      (counts: Record<string, number>, [filter]: [ethers.Filter]) => {
+        const topicHash = filter.topics?.[0] as string;
+
+        counts[topicHash] = (counts[topicHash] ?? 0) + 1;
+        return counts;
+      },
+      {}
+    );
+
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0]).toMatchObject({
+      kind: 'transfer',
+      blockNumber: 300
+    });
+    expect(callsByTopic[transferEvent.topicHash]).toBe(2);
+    expect(callsByTopic[rewardsSettledEvent.topicHash]).toBe(1);
+    expect(callsByTopic[rewardsClaimedEvent.topicHash]).toBe(1);
   });
 });
 

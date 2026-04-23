@@ -25,6 +25,17 @@ interface JsonRpcSuccessResponse {
   result: unknown;
 }
 
+interface JsonRpcErrorResponse {
+  id: JsonRpcId;
+  jsonrpc: '2.0';
+  error: {
+    code: number;
+    message: string;
+  };
+}
+
+type JsonRpcResponse = JsonRpcSuccessResponse | JsonRpcErrorResponse;
+
 interface MockBlock {
   number: number;
   timestamp: number;
@@ -63,6 +74,9 @@ type MockCssvSnapshotConfig = Pick<
   | 'cronExpression'
   | 'cronTimeZone'
 >;
+
+const rpcIntegrationTransientFailures = new Map<string, number>();
+const rpcIntegrationRequestCounts = new Map<string, number>();
 
 describe('CSSV snapshot RPC integration', () => {
   const viewsAddress = '0x5AdDb3f1529C5ec70D77400499eE4bbF328368fe';
@@ -243,6 +257,8 @@ const totalStakedAt104 = 123_456_789n;
 
   beforeEach(() => {
     getLogsRequests.length = 0;
+    rpcIntegrationTransientFailures.clear();
+    rpcIntegrationRequestCounts.clear();
   });
 
   it('uses a real JsonRpcProvider for block-tagged view reads and half-open log chunking', async () => {
@@ -289,6 +305,48 @@ const totalStakedAt104 = 123_456_789n;
         }
       ])
     );
+  });
+
+  it('retries only the failed previewClaimableEth request through the real JsonRpcProvider batch path', async () => {
+    const userAFailureKey = getPreviewFailureKey(104, userB);
+
+    rpcIntegrationTransientFailures.set(userAFailureKey, 1);
+
+    const result = await blockchainService.previewClaimableEthBatchAtBlock(
+      [userA, userB],
+      104
+    );
+
+    expect(result.get(ethers.getAddress(userA))).toBe(previewClaimableAt104);
+    expect(result.get(ethers.getAddress(userB))).toBe(0n);
+    expect(rpcIntegrationRequestCounts.get(getPreviewFailureKey(104, userA))).toBe(1);
+    expect(rpcIntegrationRequestCounts.get(userAFailureKey)).toBe(2);
+  });
+
+  it('retries only the failed eth_getLogs chunk through the real JsonRpcProvider', async () => {
+    const failureKey = getLogsFailureKey({
+      address: cssvTokenAddress,
+      fromBlock: 100,
+      toBlock: 101,
+      topicHash: transferEvent.topicHash
+    });
+
+    rpcIntegrationTransientFailures.set(failureKey, 1);
+
+    const result = await logReaderService.readSnapshotEvents(100, 105);
+
+    expect(result.events).toHaveLength(4);
+    expect(rpcIntegrationRequestCounts.get(failureKey)).toBe(2);
+    expect(
+      rpcIntegrationRequestCounts.get(
+        getLogsFailureKey({
+          address: cssvTokenAddress,
+          fromBlock: 102,
+          toBlock: 103,
+          topicHash: transferEvent.topicHash
+        })
+      )
+    ).toBe(1);
   });
 
   it('finds the next snapshot window through real block-header RPC calls', async () => {
@@ -377,7 +435,7 @@ const totalStakedAt104 = 123_456_789n;
 
   async function handleRpcRequest(
     input: JsonRpcRequest
-  ): Promise<JsonRpcSuccessResponse> {
+  ): Promise<JsonRpcResponse> {
     const params = input.params ?? [];
 
     switch (input.method) {
@@ -387,10 +445,21 @@ const totalStakedAt104 = 123_456_789n;
         return success(input.id, toHex(latestBlockNumber));
       case 'eth_getBlockByNumber':
         return success(input.id, getBlockByTag(params[0]));
-      case 'eth_getLogs':
-        return success(input.id, getLogs(params[0]));
-      case 'eth_call':
-        return success(input.id, handleEthCall(params));
+      case 'eth_getLogs': {
+        const logs = getLogs(params[0]);
+        const failureKey = getLogsFailureKey(getLogsRequests.at(-1)!);
+
+        if (consumeTransientFailure(failureKey)) {
+          return error(input.id, -32005, 'Too Many Requests');
+        }
+
+        return success(input.id, logs);
+      }
+      case 'eth_call': {
+        const result = handleEthCall(input.id, params);
+
+        return result;
+      }
       default:
         throw new Error(`Unsupported RPC method ${input.method}`);
     }
@@ -451,6 +520,14 @@ const totalStakedAt104 = 123_456_789n;
       toBlock,
       topicHash
     });
+    recordRpcRequest(
+      getLogsFailureKey({
+        address,
+        fromBlock,
+        toBlock,
+        topicHash
+      })
+    );
 
     return rpcLogs.filter(
       (log) =>
@@ -461,7 +538,10 @@ const totalStakedAt104 = 123_456_789n;
     );
   }
 
-  function handleEthCall(params: unknown[]): string {
+  function handleEthCall(
+    id: JsonRpcId,
+    params: unknown[]
+  ): JsonRpcSuccessResponse | JsonRpcErrorResponse {
     const transaction = params[0] as { data?: string; blockTag?: string | number };
     const data = transaction.data ?? '';
     const blockNumber = normalizeBlockTag(params[1] ?? transaction.blockTag);
@@ -470,9 +550,11 @@ const totalStakedAt104 = 123_456_789n;
       viewsInterface.getFunction('previewClaimableEth')!.selector;
 
     if (data.startsWith(totalStakedSelector)) {
-      return viewsInterface.encodeFunctionResult('totalStaked', [
+      const result = viewsInterface.encodeFunctionResult('totalStaked', [
         blockNumber === 104 ? totalStakedAt104 : 0n
       ]);
+
+      return success(id, result);
     }
 
     if (data.startsWith(previewSelector)) {
@@ -480,12 +562,21 @@ const totalStakedAt104 = 123_456_789n;
         'previewClaimableEth',
         data
       );
+      const requestKey = getPreviewFailureKey(blockNumber, walletAddress as string);
 
-      return viewsInterface.encodeFunctionResult('previewClaimableEth', [
+      recordRpcRequest(requestKey);
+
+      if (consumeTransientFailure(requestKey)) {
+        return error(id, -32005, 'Too Many Requests');
+      }
+
+      const result = viewsInterface.encodeFunctionResult('previewClaimableEth', [
         blockNumber === 104 && ethers.getAddress(walletAddress) === ethers.getAddress(userA)
           ? previewClaimableAt104
           : 0n
       ]);
+
+      return success(id, result);
     }
 
     throw new Error(`Unsupported eth_call data ${data}`);
@@ -510,6 +601,63 @@ function success(id: JsonRpcId, result: unknown): JsonRpcSuccessResponse {
     jsonrpc: '2.0',
     result
   };
+}
+
+function error(
+  id: JsonRpcId,
+  code: number,
+  message: string
+): JsonRpcErrorResponse {
+  return {
+    id,
+    jsonrpc: '2.0',
+    error: {
+      code,
+      message
+    }
+  };
+}
+
+function recordRpcRequest(key: string): void {
+  rpcIntegrationRequestCounts.set(
+    key,
+    (rpcIntegrationRequestCounts.get(key) ?? 0) + 1
+  );
+}
+
+function consumeTransientFailure(key: string): boolean {
+  const remainingFailures = rpcIntegrationTransientFailures.get(key) ?? 0;
+
+  if (remainingFailures <= 0) {
+    return false;
+  }
+
+  if (remainingFailures === 1) {
+    rpcIntegrationTransientFailures.delete(key);
+    return true;
+  }
+
+  rpcIntegrationTransientFailures.set(key, remainingFailures - 1);
+  return true;
+}
+
+function getPreviewFailureKey(blockNumber: number, walletAddress: string): string {
+  return `preview:${blockNumber}:${ethers.getAddress(walletAddress)}`;
+}
+
+function getLogsFailureKey(input: {
+  address: string;
+  fromBlock: number;
+  toBlock: number;
+  topicHash: string;
+}): string {
+  return [
+    'logs',
+    ethers.getAddress(input.address),
+    input.fromBlock,
+    input.toBlock,
+    input.topicHash
+  ].join(':');
 }
 
 function normalizeBlockTag(value: unknown): number {

@@ -50,6 +50,17 @@ interface JsonRpcSuccessResponse {
   result: unknown;
 }
 
+interface JsonRpcErrorResponse {
+  id: JsonRpcId;
+  jsonrpc: '2.0';
+  error: {
+    code: number;
+    message: string;
+  };
+}
+
+type JsonRpcResponse = JsonRpcSuccessResponse | JsonRpcErrorResponse;
+
 interface MockBlock {
   number: number;
   timestamp: number;
@@ -92,6 +103,8 @@ type MockCssvSnapshotConfig = Pick<
 >;
 
 const ETHERS_PROVIDER_CACHE_WINDOW_MS = 300;
+const orchestratorIntegrationTransientFailures = new Map<string, number>();
+const orchestratorIntegrationRequestCounts = new Map<string, number>();
 
 describe('CSSV snapshot orchestrator integration', () => {
   const viewsAddress = '0x5AdDb3f1529C5ec70D77400499eE4bbF328368fe';
@@ -437,6 +450,8 @@ describe('CSSV snapshot orchestrator integration', () => {
   beforeEach(async () => {
     await dataSource.query('TRUNCATE TABLE "cssv_snapshot_runs" CASCADE');
     chainState = createChainState(blocks);
+    orchestratorIntegrationTransientFailures.clear();
+    orchestratorIntegrationRequestCounts.clear();
     await waitForProviderCacheWindow();
   });
 
@@ -484,6 +499,28 @@ describe('CSSV snapshot orchestrator integration', () => {
         })
       ])
     );
+  });
+
+  it('retries a transient eth_getLogs failure and still persists the snapshot', async () => {
+    configureChainStateThroughDayOne();
+    const failureKey = getLogsFailureKey({
+      address: cssvTokenAddress,
+      fromBlock: 95,
+      toBlock: 104,
+      topicHash: transferInterface.getEvent('Transfer')!.topicHash
+    });
+
+    orchestratorIntegrationTransientFailures.set(failureKey, 1);
+
+    await expect(orchestratorService.runLockedBackfill('manual')).resolves.toBe(1);
+
+    const latestRun = await queryService.getLatestSnapshotRun();
+
+    expect(latestRun).toMatchObject({
+      snapshotDate: '2026-04-17',
+      walletCount: 2
+    });
+    expect(orchestratorIntegrationRequestCounts.get(failureKey)).toBe(2);
   });
 
   it('keeps deployment-era empty snapshots quiet during validation', async () => {
@@ -882,7 +919,7 @@ describe('CSSV snapshot orchestrator integration', () => {
 
   async function handleRpcRequest(
     input: JsonRpcRequest
-  ): Promise<JsonRpcSuccessResponse> {
+  ): Promise<JsonRpcResponse> {
     const params = input.params ?? [];
 
     switch (input.method) {
@@ -892,8 +929,16 @@ describe('CSSV snapshot orchestrator integration', () => {
         return success(input.id, toHex(chainState.latestBlockNumber));
       case 'eth_getBlockByNumber':
         return success(input.id, getBlockByTag(params[0]));
-      case 'eth_getLogs':
-        return success(input.id, getLogs(params[0]));
+      case 'eth_getLogs': {
+        const logs = getLogs(params[0]);
+        const failureKey = getLogsFailureKey(getLastLogsRequest(params[0]));
+
+        if (consumeTransientFailure(failureKey)) {
+          return error(input.id, -32005, 'Too Many Requests');
+        }
+
+        return success(input.id, logs);
+      }
       case 'eth_call':
         return success(input.id, handleEthCall(params));
       default:
@@ -956,6 +1001,15 @@ describe('CSSV snapshot orchestrator integration', () => {
     const fromBlock = normalizeBlockTag(parsedFilter.fromBlock);
     const toBlock = normalizeBlockTag(parsedFilter.toBlock);
     const topicHash = parsedFilter.topics?.[0] ?? '';
+
+    recordRpcRequest(
+      getLogsFailureKey({
+        address,
+        fromBlock,
+        toBlock,
+        topicHash
+      })
+    );
 
     return chainState.logs.filter(
       (log) =>
@@ -1087,6 +1141,80 @@ function success(id: JsonRpcId, result: unknown): JsonRpcSuccessResponse {
     jsonrpc: '2.0',
     result
   };
+}
+
+function error(
+  id: JsonRpcId,
+  code: number,
+  message: string
+): JsonRpcErrorResponse {
+  return {
+    id,
+    jsonrpc: '2.0',
+    error: {
+      code,
+      message
+    }
+  };
+}
+
+function recordRpcRequest(key: string): void {
+  orchestratorIntegrationRequestCounts.set(
+    key,
+    (orchestratorIntegrationRequestCounts.get(key) ?? 0) + 1
+  );
+}
+
+function consumeTransientFailure(key: string): boolean {
+  const remainingFailures = orchestratorIntegrationTransientFailures.get(key) ?? 0;
+
+  if (remainingFailures <= 0) {
+    return false;
+  }
+
+  if (remainingFailures === 1) {
+    orchestratorIntegrationTransientFailures.delete(key);
+    return true;
+  }
+
+  orchestratorIntegrationTransientFailures.set(key, remainingFailures - 1);
+  return true;
+}
+
+function getLastLogsRequest(filter: unknown): {
+  address: string;
+  fromBlock: number;
+  toBlock: number;
+  topicHash: string;
+} {
+  const parsedFilter = filter as {
+    address?: string;
+    fromBlock?: string;
+    toBlock?: string;
+    topics?: Array<string | null>;
+  };
+
+  return {
+    address: ethers.getAddress(parsedFilter.address ?? ethers.ZeroAddress),
+    fromBlock: normalizeBlockTag(parsedFilter.fromBlock),
+    toBlock: normalizeBlockTag(parsedFilter.toBlock),
+    topicHash: parsedFilter.topics?.[0] ?? ''
+  };
+}
+
+function getLogsFailureKey(input: {
+  address: string;
+  fromBlock: number;
+  toBlock: number;
+  topicHash: string;
+}): string {
+  return [
+    'logs',
+    ethers.getAddress(input.address),
+    input.fromBlock,
+    input.toBlock,
+    input.topicHash
+  ].join(':');
 }
 
 function normalizeBlockTag(value: unknown): number {
