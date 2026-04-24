@@ -30,7 +30,7 @@ export class CssvSnapshotConfigService {
   readonly cronTimeZone: string;
 
   constructor(private readonly configService: ConfigService) {
-    this.rpcUrl = this.getRequiredString('RPC_URL');
+    this.rpcUrl = this.getRequiredString('ARCHIVE_RPC_URL');
     this.chainId = parseRequiredPositiveInteger(
       'CHAIN_ID',
       this.getRequiredString('CHAIN_ID')

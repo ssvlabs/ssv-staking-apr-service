@@ -4,7 +4,7 @@
 
 Docker/local testing currently assumes:
 
-- `RPC_URL=https://mainnet.infura.io/v3/<api-key>`
+- `ARCHIVE_RPC_URL=https://mainnet.infura.io/v3/<api-key>`
 - `CHAIN_ID=1`
 - `STAKING_CONTRACT_ADDRESS=0xDD9BC35aE942eF0cFa76930954a156B3fF30a4E1`
 - `VIEWS_CONTRACT_ADDRESS=0xafE830B6Ee262ba11cce5F32fDCd760FFE6a66e4`
@@ -26,7 +26,7 @@ So no snapshot-relevant token transfer history is lost by skipping the earlier c
 
 Required when `CSSV_SNAPSHOT_ENABLED=true`:
 
-- `RPC_URL`
+- `ARCHIVE_RPC_URL`
 - `CHAIN_ID`
 - `STAKING_CONTRACT_ADDRESS`
 - `VIEWS_CONTRACT_ADDRESS`
@@ -38,7 +38,7 @@ Optional:
 - `CSSV_SNAPSHOT_ENABLED` default `false`
 - `LOG_CHUNK_SIZE_BLOCKS` default `2400`
 
-`RPC_URL` must be an **archive-capable mainnet RPC** for full historical backfill because the snapshot flow performs historical `eth_call` reads at old blocks. A non-archive node or simple cluster port-forward is not enough.
+`ARCHIVE_RPC_URL` must be an **archive-capable mainnet RPC** for full historical backfill because the snapshot flow performs historical `eth_call` reads at old blocks. A non-archive node or simple cluster port-forward is not enough. The existing `RPC_URL` remains for the regular APR latest-state reads.
 
 For local mainnet testing, assume **Infura**. We explicitly do **not** document Alchemy free tier as suitable here because its `eth_getLogs` block-range limits are too restrictive for this backfill path.
 
@@ -67,7 +67,7 @@ Current constants:
 Typical local mainnet flow:
 
 1. provision an archive-capable mainnet Infura RPC URL
-2. set `RPC_URL` in `.env` or your shell environment
+2. set `ARCHIVE_RPC_URL` in `.env` or your shell environment
 3. start the service with `docker compose up --build`
 4. query the API on `http://localhost:3000`
 
