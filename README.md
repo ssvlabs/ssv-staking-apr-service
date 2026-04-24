@@ -9,6 +9,12 @@ A NestJS microservice that calculates and tracks the Annual Percentage Rate (APR
 - **CoinGecko Integration**: Fetches 24-hour average prices for ETH and SSV (not spot prices)
 - **PostgreSQL Storage**: Stores historical APR samples with timestamps
 - **REST API**: Exposes endpoints to query current and historical APR data
+- **cSSV Daily Snapshots**: Stores daily wallet-level cSSV balances and ETH reward accruals
+
+Feature-specific docs:
+
+- [cSSV snapshot README](./docs/cssv-snapshot/README.md)
+- [cSSV daily snapshot architecture](./docs/cssv-snapshot/CSSV_DAILY_SNAPSHOT_ARCHITECTURE.md)
 
 ## APR Calculation Formula
 

@@ -22,6 +22,42 @@ function assertEnv(
   return value;
 }
 
+function assertBooleanEnv(
+  env: EnvVars,
+  key: string,
+  options: AssertEnvOptions = {}
+): string | undefined {
+  const value = assertEnv(env, key, options);
+
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value !== 'true' && value !== 'false') {
+    throw new Error(`${key} must be either "true" or "false"`);
+  }
+
+  return value;
+}
+
+function assertPositiveIntegerEnv(
+  env: EnvVars,
+  key: string,
+  options: AssertEnvOptions = {}
+): string | undefined {
+  const value = assertEnv(env, key, options);
+
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!/^\d+$/.test(value)) {
+    throw new Error(`${key} must be a positive integer`);
+  }
+
+  return value;
+}
+
 export function validateEnvironment(env: EnvVars): EnvVars {
   assertEnv(env, 'NODE_ENV', { optional: true });
   assertEnv(env, 'PORT', { optional: true });
@@ -36,6 +72,14 @@ export function validateEnvironment(env: EnvVars): EnvVars {
   assertEnv(env, 'COINGECKO_API_URL', { optional: true });
   assertEnv(env, 'EXPLORER_CENTER_URL');
   assertEnv(env, 'ORACLE_URL');
+  assertBooleanEnv(env, 'CSSV_SNAPSHOT_ENABLED', { optional: true });
+  assertPositiveIntegerEnv(env, 'LOG_CHUNK_SIZE_BLOCKS', { optional: true });
+
+  if (env.CSSV_SNAPSHOT_ENABLED === 'true') {
+    assertPositiveIntegerEnv(env, 'CHAIN_ID');
+    assertEnv(env, 'CSSV_TOKEN_ADDRESS');
+    assertPositiveIntegerEnv(env, 'CSSV_SNAPSHOT_START_BLOCK');
+  }
 
   return env;
 }
