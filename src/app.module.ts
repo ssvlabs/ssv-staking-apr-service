@@ -11,6 +11,10 @@ import { ExplorerCenterService } from './services/explorer-center.service';
 import { OracleService } from './services/oracle.service';
 import { getDatabaseConfig } from './config/database.config';
 import { validateEnvironment } from './config/env.validation';
+import { CssvSnapshotModule } from './cssv-snapshot/cssv-snapshot.module';
+import { CssvSnapshotDisabledController } from './cssv-snapshot/controllers/cssv-snapshot-disabled.controller';
+
+const cssvSnapshotEnabled = process.env.CSSV_SNAPSHOT_ENABLED === 'true';
 
 @Module({
   imports: [
@@ -24,9 +28,13 @@ import { validateEnvironment } from './config/env.validation';
       inject: [ConfigService]
     }),
     TypeOrmModule.forFeature([AprSample]),
-    ScheduleModule.forRoot()
+    ScheduleModule.forRoot(),
+    ...(cssvSnapshotEnabled ? [CssvSnapshotModule] : [])
   ],
-  controllers: [AprController],
+  controllers: [
+    AprController,
+    ...(cssvSnapshotEnabled ? [] : [CssvSnapshotDisabledController])
+  ],
   providers: [
     AprCalculationService,
     BlockchainService,
