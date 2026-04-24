@@ -84,6 +84,8 @@ For internal map/set keys, prefer the canonical 20-byte address value or the can
 
 On startup, the service backfills from a configured **snapshot start block** until the latest eligible `12:00 UTC` snapshot.
 
+The snapshot implementation uses `ARCHIVE_RPC_URL`, not the regular APR `RPC_URL`, because it needs historical `eth_call` and log reads. `ARCHIVE_RPC_URL` is required only when `CSSV_SNAPSHOT_ENABLED=true`.
+
 **Edit note (April 23, 2026):** on mainnet, the effective start point for snapshot reads is the **smart contract upgrade block `24920727`**, not raw cSSV deployment. Historical `SSVNetworkViews.totalStaked()` reverts before that block.
 
 We explicitly checked whether any cSSV transfer history exists before the upgrade boundary:
