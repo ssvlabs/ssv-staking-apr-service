@@ -7,15 +7,28 @@ import { AprSample } from '../entities/apr-sample.entity';
 import { BlockchainService } from './blockchain.service';
 import { CoinGeckoService } from './coingecko.service';
 import { ExplorerCenterService } from './explorer-center.service';
+import type { ExplorerCenterClusterStats } from './explorer-center.service';
 import { OracleService } from './oracle.service';
 
 const BLOCKS_PER_YEAR = 2_613_400;
 const EFFECTIVE_BALANCE_PER_VALIDATOR = 32;
+const EMPTY_CLUSTER_STATS: ExplorerCenterClusterStats = {
+  totalActiveClusters: 0,
+  ETHClusters: 0,
+  SSVclusters: 0,
+  totalEffectiveBalance: '0',
+  totalETHEffectiveBalance: '0'
+};
 
 export interface CurrentAprResponse {
   apr: number | null;
   aprProjected: number | null;
   lastUpdated: number;
+}
+
+interface ComputedAprResponse extends ExplorerCenterClusterStats {
+  apr: number | null;
+  aprProjected: number | null;
 }
 
 @Injectable()
@@ -102,12 +115,11 @@ export class AprCalculationService {
     networkFeeWei: bigint,
     priceEth: number,
     priceSsv: number
-  ): Promise<{ apr: number | null; aprProjected: number | null }> {
+  ): Promise<ComputedAprResponse> {
     try {
-      // Explorer Center validators endpoint is gwei and Oracle provides projected balances.
       const [
         totalStakedEth,
-        ecClustersEffectiveBalanceEth,
+        explorerCenterClusterStats,
         oracleClustersEffectiveBalanceEth
       ] = await Promise.all([
         this.blockchainService.getTotalStaked(),
@@ -123,12 +135,16 @@ export class AprCalculationService {
         this.logger.warn(
           `Invalid normalized totalStaked value from contract: ${totalStakedEth}`
         );
-        return { apr: null, aprProjected: null };
+        return {
+          apr: null,
+          aprProjected: null,
+          ...explorerCenterClusterStats
+        };
       }
 
       const apr = this.computeAprFromInputs(
         networkFeeWei,
-        ecClustersEffectiveBalanceEth,
+        explorerCenterClusterStats.totalETHEffectiveBalance,
         totalEligibleSsvStaked,
         priceEth,
         priceSsv,
@@ -144,7 +160,11 @@ export class AprCalculationService {
         'APR_PROJECTED'
       );
 
-      return { apr, aprProjected };
+      return {
+        apr,
+        aprProjected,
+        ...explorerCenterClusterStats
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const stack = error instanceof Error ? error.stack : undefined;
@@ -154,7 +174,11 @@ export class AprCalculationService {
       if (stack) {
         this.logger.debug(`Stack trace: ${stack}`);
       }
-      return { apr: null, aprProjected: null };
+      return {
+        apr: null,
+        aprProjected: null,
+        ...EMPTY_CLUSTER_STATS
+      };
     }
   }
 
@@ -172,7 +196,15 @@ export class AprCalculationService {
 
       const timestamp = new Date();
 
-      const { apr, aprProjected } = await this.computeCurrentAndProjectedApr(
+      const {
+        apr,
+        aprProjected,
+        totalActiveClusters,
+        ETHClusters,
+        SSVclusters,
+        totalEffectiveBalance,
+        totalETHEffectiveBalance
+      } = await this.computeCurrentAndProjectedApr(
         networkFeeWei,
         prices.ethPrice,
         prices.ssvPrice
@@ -185,6 +217,11 @@ export class AprCalculationService {
         ssvPrice: prices.ssvPrice.toString(),
         currentApr: apr !== null ? apr.toFixed(2) : null,
         aprProjected: aprProjected !== null ? aprProjected.toFixed(2) : null,
+        totalActiveClusters,
+        ethClusters: ETHClusters,
+        ssvClusters: SSVclusters,
+        totalEffectiveBalance,
+        totalEthEffectiveBalance: totalETHEffectiveBalance,
         deltaIndex: null,
         deltaTime: null
       });
