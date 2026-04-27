@@ -12,6 +12,8 @@ import { OracleService } from './oracle.service';
 
 const BLOCKS_PER_YEAR = 2_613_400;
 const EFFECTIVE_BALANCE_PER_VALIDATOR = 32;
+const DEFAULT_APR_CALCULATION_CRON = '0 */3 * * *';
+const APR_CALCULATION_CRON = process.env.APR_CALCULATION_CRON || DEFAULT_APR_CALCULATION_CRON;
 const EMPTY_CLUSTER_STATS: ExplorerCenterClusterStats = {
   totalActiveClusters: 0,
   ETHClusters: 0,
@@ -183,10 +185,10 @@ export class AprCalculationService {
   }
 
   /**
-   * Scheduled job to collect APR sample every 3 hours.
-   * Cron expression runs at minute 0 every third hour.
+    * Scheduled job to collect APR samples.
+    * Uses APR_CALCULATION_CRON env var, defaulting to every 3 hours.
    */
-  @Cron('0 */3 * * *')
+    @Cron(APR_CALCULATION_CRON)
   async collectAprSample(): Promise<AprSample> {
     try {
       const [networkFeeWei, prices] = await Promise.all([

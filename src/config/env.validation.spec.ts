@@ -14,6 +14,23 @@ const baseEnv = {
 };
 
 describe('validateEnvironment', () => {
+  it('sets default APR_CALCULATION_CRON when missing', () => {
+    const validated = validateEnvironment({
+      ...baseEnv
+    });
+
+    expect(validated.APR_CALCULATION_CRON).toBe('0 */3 * * *');
+  });
+
+  it('keeps APR_CALCULATION_CRON when provided', () => {
+    const validated = validateEnvironment({
+      ...baseEnv,
+      APR_CALCULATION_CRON: '15 */6 * * *'
+    });
+
+    expect(validated.APR_CALCULATION_CRON).toBe('15 */6 * * *');
+  });
+
   it('does not require ARCHIVE_RPC_URL when CSSV snapshots are disabled', () => {
     expect(() =>
       validateEnvironment({

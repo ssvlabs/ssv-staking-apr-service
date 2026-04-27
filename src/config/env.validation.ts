@@ -1,4 +1,5 @@
 type EnvVars = Record<string, string | undefined>;
+const DEFAULT_APR_CALCULATION_CRON = '0 */3 * * *';
 
 interface AssertEnvOptions {
   optional?: boolean;
@@ -59,6 +60,8 @@ function assertPositiveIntegerEnv(
 }
 
 export function validateEnvironment(env: EnvVars): EnvVars {
+  env.APR_CALCULATION_CRON ??= DEFAULT_APR_CALCULATION_CRON;
+
   assertEnv(env, 'NODE_ENV', { optional: true });
   assertEnv(env, 'PORT', { optional: true });
   assertEnv(env, 'DATABASE_HOST');
