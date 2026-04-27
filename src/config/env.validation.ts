@@ -1,5 +1,4 @@
 type EnvVars = Record<string, string | undefined>;
-const DEFAULT_APR_CALCULATION_CRON = '0 */3 * * *';
 
 interface AssertEnvOptions {
   optional?: boolean;
@@ -60,8 +59,6 @@ function assertPositiveIntegerEnv(
 }
 
 export function validateEnvironment(env: EnvVars): EnvVars {
-  env.APR_CALCULATION_CRON ??= DEFAULT_APR_CALCULATION_CRON;
-
   assertEnv(env, 'NODE_ENV', { optional: true });
   assertEnv(env, 'PORT', { optional: true });
   assertEnv(env, 'DATABASE_HOST');
@@ -76,6 +73,7 @@ export function validateEnvironment(env: EnvVars): EnvVars {
   assertEnv(env, 'COINGECKO_CACHE_TTL_MS', { optional: true });
   assertEnv(env, 'EXPLORER_CENTER_URL');
   assertEnv(env, 'ORACLE_URL');
+  assertEnv(env, 'APR_CALCULATION_CRON', { optional: true });
   assertBooleanEnv(env, 'CSSV_SNAPSHOT_ENABLED', { optional: true });
   assertPositiveIntegerEnv(env, 'LOG_CHUNK_SIZE_BLOCKS', { optional: true });
 
