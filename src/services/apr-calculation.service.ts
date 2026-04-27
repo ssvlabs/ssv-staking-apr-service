@@ -11,6 +11,13 @@ import { OracleService } from './oracle.service';
 
 const BLOCKS_PER_YEAR = 2_613_400;
 const EFFECTIVE_BALANCE_PER_VALIDATOR = 32;
+const DEFAULT_APR_CALCULATION_CRON = '0 */3 * * *';
+
+export function getAprCalculationCronExpression(
+  env: { APR_CALCULATION_CRON?: string } = process.env
+): string {
+  return env.APR_CALCULATION_CRON?.trim() || DEFAULT_APR_CALCULATION_CRON;
+}
 
 export interface CurrentAprResponse {
   apr: number | null;
@@ -159,10 +166,10 @@ export class AprCalculationService {
   }
 
   /**
-   * Scheduled job to collect APR sample every 3 hours.
-   * Cron expression runs at minute 0 every third hour.
+   * Scheduled job to collect APR samples. The schedule defaults to every
+   * three hours, but can be overridden by APR_CALCULATION_CRON at process boot.
    */
-  @Cron('0 */3 * * *')
+  @Cron(getAprCalculationCronExpression())
   async collectAprSample(): Promise<AprSample> {
     try {
       const [networkFeeWei, prices] = await Promise.all([
