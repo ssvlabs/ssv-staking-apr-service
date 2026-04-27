@@ -22,7 +22,7 @@ const EMPTY_CLUSTER_STATS: ExplorerCenterClusterStats = {
   totalETHEffectiveBalance: '0'
 };
 
-export interface CurrentAprResponse {
+export interface CurrentAprResponse extends ExplorerCenterClusterStats {
   apr: number | null;
   aprProjected: number | null;
   lastUpdated: number;
@@ -263,7 +263,15 @@ export class AprCalculationService {
         this.coinGeckoService.getPrices()
       ]);
 
-      const { apr, aprProjected } = await this.computeCurrentAndProjectedApr(
+      const {
+        apr,
+        aprProjected,
+        totalActiveClusters,
+        ETHClusters,
+        SSVclusters,
+        totalEffectiveBalance,
+        totalETHEffectiveBalance
+      } = await this.computeCurrentAndProjectedApr(
         networkFeeWei,
         prices.ethPrice,
         prices.ssvPrice
@@ -274,7 +282,12 @@ export class AprCalculationService {
       return {
         apr,
         aprProjected,
-        lastUpdated
+        lastUpdated,
+        totalActiveClusters,
+        ETHClusters,
+        SSVclusters,
+        totalEffectiveBalance,
+        totalETHEffectiveBalance
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
