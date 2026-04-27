@@ -2,8 +2,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BaseApiService } from './base-api.service';
 
-interface ExplorerCenterClustersEffectiveBalanceResponse {
+export interface ExplorerCenterClusterStats {
+  totalActiveClusters: number;
+  ETHClusters: number;
+  SSVclusters: number;
   totalEffectiveBalance: string;
+  totalETHEffectiveBalance: string;
 }
 
 @Injectable()
@@ -16,19 +20,9 @@ export class ExplorerCenterService extends BaseApiService {
     super(logger, url, 'Explorer Center effective balance');
   }
 
-  async getClustersEffectiveBalance(): Promise<string> {
-    const response =
-      await this.get<ExplorerCenterClustersEffectiveBalanceResponse>(
-        '/clusters/effective-balance'
-      );
-    const value = response.totalEffectiveBalance;
-
-    if (typeof value !== 'string') {
-      throw new Error(
-        `Explorer Center response missing totalEffectiveBalance. Data: ${JSON.stringify(response)}`
-      );
-    }
-
-    return value;
+  async getClustersEffectiveBalance(): Promise<ExplorerCenterClusterStats> {
+    return await this.get<ExplorerCenterClusterStats>(
+      '/clusters/effective-balance'
+    );
   }
 }
