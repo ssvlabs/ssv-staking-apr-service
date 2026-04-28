@@ -73,6 +73,30 @@ Typical local mainnet flow:
 
 Do **not** rely on a local port-forward to a non-archive execution node for backfill. The snapshot flow needs historical state reads, not just latest block access.
 
+## Local CSV export
+
+After the local snapshot backfill has synced, export persisted snapshot data directly from PostgreSQL:
+
+```bash
+npm run export:cssv-snapshots
+```
+
+The script loads `.env` by default, connects with the existing `DATABASE_*` variables, and writes:
+
+- `exports/cssv-snapshots/snapshot-runs.csv`
+- `exports/cssv-snapshots/wallets/<YYYY-MM-DD>.csv`
+
+When `DATABASE_*` variables are not set, the script falls back to the local Docker Compose Postgres defaults: `localhost:5433`, `ssv_user`, `ssv_password`, `ssv_apr`.
+
+Each wallet CSV contains raw wei columns plus decimal ETH/SSV helper columns. Empty snapshot days still produce a CSV with only headers.
+
+Useful filters:
+
+```bash
+npm run export:cssv-snapshots -- --from 2026-04-20 --to 2026-04-28
+npm run export:cssv-snapshots -- --out tmp/cssv-export --combined
+```
+
 ## API
 
 Public read endpoint:
