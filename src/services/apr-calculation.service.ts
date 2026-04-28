@@ -6,15 +6,31 @@ import { ethers } from 'ethers';
 import { AprSample } from '../entities/apr-sample.entity';
 import { BlockchainService } from './blockchain.service';
 import { CoinGeckoService } from './coingecko.service';
-import { EcService } from './ec.service';
+import { ExplorerCenterService } from './explorer-center.service';
+import type { ExplorerCenterClusterStats } from './explorer-center.service';
+import { OracleService } from './oracle.service';
 
 const BLOCKS_PER_YEAR = 2_613_400;
 const EFFECTIVE_BALANCE_PER_VALIDATOR = 32;
+const DEFAULT_APR_CALCULATION_CRON = '0 */3 * * *';
+const APR_CALCULATION_CRON = process.env.APR_CALCULATION_CRON || DEFAULT_APR_CALCULATION_CRON;
+const EMPTY_CLUSTER_STATS: ExplorerCenterClusterStats = {
+  totalActiveClusters: 0,
+  ETHClusters: 0,
+  SSVclusters: 0,
+  totalEffectiveBalance: '0',
+  totalETHEffectiveBalance: '0'
+};
 
-export interface CurrentAprResponse {
+export interface CurrentAprResponse extends ExplorerCenterClusterStats {
   apr: number | null;
   aprProjected: number | null;
   lastUpdated: number;
+}
+
+interface ComputedAprResponse extends ExplorerCenterClusterStats {
+  apr: number | null;
+  aprProjected: number | null;
 }
 
 @Injectable()
@@ -26,7 +42,8 @@ export class AprCalculationService {
     private aprSampleRepository: Repository<AprSample>,
     private blockchainService: BlockchainService,
     private coinGeckoService: CoinGeckoService,
-    private ecService: EcService
+    private explorerCenterService: ExplorerCenterService,
+    private oracleService: OracleService
   ) {
     this.logger.log('AprCalculationService constructed');
   }
@@ -100,17 +117,16 @@ export class AprCalculationService {
     networkFeeWei: bigint,
     priceEth: number,
     priceSsv: number
-  ): Promise<{ apr: number | null; aprProjected: number | null }> {
+  ): Promise<ComputedAprResponse> {
     try {
-      // EC validators endpoint is gwei; EcService converts it to ETH.
       const [
         totalStakedEth,
-        ecClustersEffectiveBalanceEth,
+        explorerCenterClusterStats,
         oracleClustersEffectiveBalanceEth
       ] = await Promise.all([
         this.blockchainService.getTotalStaked(),
-        this.ecService.getEcClustersEffectiveBalance(),
-        this.ecService.getOracleClustersEffectiveBalance()
+        this.explorerCenterService.getClustersEffectiveBalance(),
+        this.oracleService.getClustersEffectiveBalance()
       ]);
 
       const totalEligibleSsvStaked = Number(totalStakedEth);
@@ -121,12 +137,16 @@ export class AprCalculationService {
         this.logger.warn(
           `Invalid normalized totalStaked value from contract: ${totalStakedEth}`
         );
-        return { apr: null, aprProjected: null };
+        return {
+          apr: null,
+          aprProjected: null,
+          ...explorerCenterClusterStats
+        };
       }
 
       const apr = this.computeAprFromInputs(
         networkFeeWei,
-        ecClustersEffectiveBalanceEth,
+        explorerCenterClusterStats.totalETHEffectiveBalance,
         totalEligibleSsvStaked,
         priceEth,
         priceSsv,
@@ -142,7 +162,11 @@ export class AprCalculationService {
         'APR_PROJECTED'
       );
 
-      return { apr, aprProjected };
+      return {
+        apr,
+        aprProjected,
+        ...explorerCenterClusterStats
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const stack = error instanceof Error ? error.stack : undefined;
@@ -152,15 +176,19 @@ export class AprCalculationService {
       if (stack) {
         this.logger.debug(`Stack trace: ${stack}`);
       }
-      return { apr: null, aprProjected: null };
+      return {
+        apr: null,
+        aprProjected: null,
+        ...EMPTY_CLUSTER_STATS
+      };
     }
   }
 
   /**
-   * Scheduled job to collect APR sample every 3 hours.
-   * Cron expression runs at minute 0 every third hour.
+    * Scheduled job to collect APR samples.
+    * Uses APR_CALCULATION_CRON env var, defaulting to every 3 hours.
    */
-  @Cron('0 */3 * * *')
+    @Cron(APR_CALCULATION_CRON)
   async collectAprSample(): Promise<AprSample> {
     try {
       const [networkFeeWei, prices] = await Promise.all([
@@ -170,7 +198,15 @@ export class AprCalculationService {
 
       const timestamp = new Date();
 
-      const { apr, aprProjected } = await this.computeCurrentAndProjectedApr(
+      const {
+        apr,
+        aprProjected,
+        totalActiveClusters,
+        ETHClusters,
+        SSVclusters,
+        totalEffectiveBalance,
+        totalETHEffectiveBalance
+      } = await this.computeCurrentAndProjectedApr(
         networkFeeWei,
         prices.ethPrice,
         prices.ssvPrice
@@ -183,6 +219,11 @@ export class AprCalculationService {
         ssvPrice: prices.ssvPrice.toString(),
         currentApr: apr !== null ? apr.toFixed(2) : null,
         aprProjected: aprProjected !== null ? aprProjected.toFixed(2) : null,
+        totalActiveClusters,
+        ethClusters: ETHClusters,
+        ssvClusters: SSVclusters,
+        totalEffectiveBalance,
+        totalEthEffectiveBalance: totalETHEffectiveBalance,
         deltaIndex: null,
         deltaTime: null
       });
@@ -222,7 +263,15 @@ export class AprCalculationService {
         this.coinGeckoService.getPrices()
       ]);
 
-      const { apr, aprProjected } = await this.computeCurrentAndProjectedApr(
+      const {
+        apr,
+        aprProjected,
+        totalActiveClusters,
+        ETHClusters,
+        SSVclusters,
+        totalEffectiveBalance,
+        totalETHEffectiveBalance
+      } = await this.computeCurrentAndProjectedApr(
         networkFeeWei,
         prices.ethPrice,
         prices.ssvPrice
@@ -233,7 +282,12 @@ export class AprCalculationService {
       return {
         apr,
         aprProjected,
-        lastUpdated
+        lastUpdated,
+        totalActiveClusters,
+        ETHClusters,
+        SSVclusters,
+        totalEffectiveBalance,
+        totalETHEffectiveBalance
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

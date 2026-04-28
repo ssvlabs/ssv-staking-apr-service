@@ -9,6 +9,12 @@ A NestJS microservice that calculates and tracks the Annual Percentage Rate (APR
 - **CoinGecko Integration**: Fetches 24-hour average prices for ETH and SSV (not spot prices)
 - **PostgreSQL Storage**: Stores historical APR samples with timestamps
 - **REST API**: Exposes endpoints to query current and historical APR data
+- **cSSV Daily Snapshots**: Stores daily wallet-level cSSV balances and ETH reward accruals
+
+Feature-specific docs:
+
+- [cSSV snapshot README](./docs/cssv-snapshot/README.md)
+- [cSSV daily snapshot architecture](./docs/cssv-snapshot/CSSV_DAILY_SNAPSHOT_ARCHITECTURE.md)
 
 ## APR Calculation Formula
 
@@ -17,6 +23,7 @@ APR = (ΔIndex / ΔTime) × (ETH_Price / SSV_Price) × 31,536,000 × 100
 ```
 
 Where:
+
 - `ΔIndex` = change in `accEthPerShare` between two samples
 - `ΔTime` = seconds between samples (unix timestamps)
 - `ETH_Price` and `SSV_Price` are 24-hour average prices from CoinGecko
@@ -58,8 +65,9 @@ STAKING_CONTRACT_ADDRESS=0x...  # SSV staking contract address
 # CoinGecko
 COINGECKO_API_URL=https://api.coingecko.com/api/v3
 
-# Explorer Center (Hoodi)
-EXPLORER_CENTER_HOODI=
+# Explorer Center
+EXPLORER_CENTER_URL=
+ORACLE_URL=
 
 # Cron Schedule (every 24 hours at midnight UTC)
 APR_CALCULATION_CRON=0 0 * * *
@@ -99,6 +107,7 @@ GET /api/apr/current
 ```
 
 **Response:**
+
 ```json
 {
   "currentApr": "12.45",
@@ -120,6 +129,7 @@ GET /api/apr/latest
 Returns the two most recent APR samples (as required by the UI spec).
 
 **Response:**
+
 ```json
 {
   "samples": [
@@ -157,11 +167,13 @@ GET /api/apr/history?limit=30&startDate=2024-01-01&endDate=2024-01-31
 ```
 
 **Query Parameters:**
+
 - `limit` (optional): Number of samples to return (default: 30)
 - `startDate` (optional): ISO 8601 date string
 - `endDate` (optional): ISO 8601 date string
 
 **Response:**
+
 ```json
 {
   "samples": [...],
@@ -178,6 +190,7 @@ POST /api/apr/collect
 Manually trigger APR sample collection (useful for testing or admin operations).
 
 **Response:**
+
 ```json
 {
   "message": "APR sample collected successfully",
@@ -192,6 +205,7 @@ GET /api/apr/health
 ```
 
 **Response:**
+
 ```json
 {
   "status": "ok",
@@ -220,30 +234,33 @@ GET /api/apr/health
 
 ### apr_samples
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | UUID | Primary key |
-| timestamp | TIMESTAMP | Sample collection time |
-| accEthPerShare | NUMERIC(78,18) | Value from blockchain |
-| ethPrice | NUMERIC(18,8) | 24h average ETH price (USD) |
-| ssvPrice | NUMERIC(18,8) | 24h average SSV price (USD) |
-| currentApr | NUMERIC(10,2) | Calculated APR percentage |
-| deltaIndex | NUMERIC(78,18) | Change in accEthPerShare |
-| deltaTime | BIGINT | Seconds between samples |
-| createdAt | TIMESTAMP | Record creation time |
+| Column         | Type           | Description                 |
+| -------------- | -------------- | --------------------------- |
+| id             | UUID           | Primary key                 |
+| timestamp      | TIMESTAMP      | Sample collection time      |
+| accEthPerShare | NUMERIC(78,18) | Value from blockchain       |
+| ethPrice       | NUMERIC(18,8)  | 24h average ETH price (USD) |
+| ssvPrice       | NUMERIC(18,8)  | 24h average SSV price (USD) |
+| currentApr     | NUMERIC(10,2)  | Calculated APR percentage   |
+| deltaIndex     | NUMERIC(78,18) | Change in accEthPerShare    |
+| deltaTime      | BIGINT         | Seconds between samples     |
+| createdAt      | TIMESTAMP      | Record creation time        |
 
 ## Data Sources
 
 ### Blockchain
+
 - **Contract**: SSV Staking Contract
 - **Method**: `accEthPerShare()`
 - **Network**: Ethereum Mainnet
 
 ### Explorer Center (Hoodi)
+
 - **Validators Effective Balance**: `GET /validators/effective-balance`
 - **Clusters Effective Balance**: `GET /clusters/effective-balance`
 
 ### CoinGecko
+
 - **Endpoint**: `/coins/{id}/market_chart`
 - **Tokens**:
   - `ethereum` (ETH)
@@ -283,16 +300,19 @@ docker-compose up --build
 ## Troubleshooting
 
 ### APR shows null
+
 - Need at least 2 samples to calculate APR
 - Wait for the second cron job run (24 hours after first sample)
 - Or manually trigger: `POST /api/apr/collect` twice with 1+ minute delay
 
 ### Blockchain connection errors
+
 - Verify RPC_URL is correct and accessible
 - Check STAKING_CONTRACT_ADDRESS is correct
 - Ensure RPC provider has sufficient rate limits
 
 ### CoinGecko API errors
+
 - CoinGecko free tier has rate limits
 - Consider adding API key for higher limits
 - Service automatically retries failed requests
