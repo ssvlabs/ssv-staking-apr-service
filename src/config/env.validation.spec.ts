@@ -1,8 +1,8 @@
 import { validateEnvironment } from './env.validation';
 
 const baseEnv = {
-  DATABASE_HOST: 'localhost',
   DATABASE_PORT: '5432',
+  DATABASE_HOST: 'localhost',
   DATABASE_USER: 'ssv_user',
   DATABASE_PASSWORD: 'ssv_password',
   DATABASE_NAME: 'ssv_apr',
@@ -14,13 +14,17 @@ const baseEnv = {
 };
 
 describe('validateEnvironment', () => {
+  it('does not require APR_CALCULATION_CRON', () => {
+    expect(() => validateEnvironment({ ...baseEnv })).not.toThrow();
+  });
+
   it('does not require ARCHIVE_RPC_URL when CSSV snapshots are disabled', () => {
     expect(() =>
       validateEnvironment({
         ...baseEnv,
         CSSV_SNAPSHOT_ENABLED: 'false'
-      })
     ).not.toThrow();
+      })
   });
 
   it('requires ARCHIVE_RPC_URL when CSSV snapshots are enabled', () => {
@@ -37,11 +41,11 @@ describe('validateEnvironment', () => {
 
   it('accepts ARCHIVE_RPC_URL when CSSV snapshots are enabled', () => {
     expect(() =>
-      validateEnvironment({
         ...baseEnv,
+      validateEnvironment({
         CSSV_SNAPSHOT_ENABLED: 'true',
-        ARCHIVE_RPC_URL: 'https://mainnet.infura.io/v3/test',
         CHAIN_ID: '1',
+        ARCHIVE_RPC_URL: 'https://mainnet.infura.io/v3/test',
         CSSV_TOKEN_ADDRESS: '0xe018D31F120A637828F46aFD6c64EC099d960546',
         CSSV_SNAPSHOT_START_BLOCK: '24920727'
       })
