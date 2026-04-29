@@ -9,33 +9,33 @@ import {
 @Entity('apr_samples')
 export class AprSample {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Column({ type: 'timestamp', unique: true })
   @Index()
-  timestamp: Date;
+  timestamp!: Date;
 
   @Column({ name: 'accEthPerShare', type: 'numeric', precision: 78, scale: 18 })
-  networkFeeWei: string;
+  networkFeeWei!: string;
 
   @Column({ type: 'numeric', precision: 18, scale: 8 })
-  ethPrice: string;
+  ethPrice!: string;
 
   @Column({ type: 'numeric', precision: 18, scale: 8 })
-  ssvPrice: string;
+  ssvPrice!: string;
 
   @Column({ type: 'numeric', precision: 20, scale: 2, nullable: true })
-  currentApr: string | null;
+  currentApr!: string | null;
 
   @Column({ type: 'numeric', precision: 20, scale: 2, nullable: true })
-  aprProjected: string | null;
+  aprProjected!: string | null;
 
   @Column({ type: 'numeric', precision: 78, scale: 18, nullable: true })
-  deltaIndex: string | null;
+  deltaIndex!: string | null;
 
   @Column({ type: 'bigint', nullable: true })
-  deltaTime: number | null;
+  deltaTime!: number | null;
 
   @CreateDateColumn()
-  createdAt: Date;
+  createdAt!: Date;
 }
