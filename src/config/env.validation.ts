@@ -73,6 +73,7 @@ export function validateEnvironment(env: EnvVars): EnvVars {
   assertEnv(env, 'COINGECKO_CACHE_TTL_MS', { optional: true });
   assertEnv(env, 'EXPLORER_CENTER_URL');
   assertEnv(env, 'ORACLE_URL');
+  assertEnv(env, 'APR_CALCULATION_CRON', { optional: true });
   assertBooleanEnv(env, 'CSSV_SNAPSHOT_ENABLED', { optional: true });
   assertPositiveIntegerEnv(env, 'LOG_CHUNK_SIZE_BLOCKS', { optional: true });
 
