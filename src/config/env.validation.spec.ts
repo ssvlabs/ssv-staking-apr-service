@@ -14,6 +14,10 @@ const baseEnv = {
 };
 
 describe('validateEnvironment', () => {
+  it('does not require APR_CALCULATION_CRON', () => {
+    expect(() => validateEnvironment({ ...baseEnv })).not.toThrow();
+  });
+
   it('does not require ARCHIVE_RPC_URL when CSSV snapshots are disabled', () => {
     expect(() =>
       validateEnvironment({

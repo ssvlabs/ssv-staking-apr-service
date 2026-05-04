@@ -33,13 +33,6 @@ export class AprController {
   @ApiResponse({
     status: 200,
     description: 'Successfully retrieved current APR',
-    schema: {
-      example: {
-        currentApr: 5.67,
-        aprProjected: 6.12,
-        timestamp: '2025-01-15T12:00:00Z'
-      }
-    }
   })
   async getCurrentApr() {
     const apr = await this.aprCalculationService.getCurrentApr();

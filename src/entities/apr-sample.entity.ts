@@ -30,6 +30,21 @@ export class AprSample {
   @Column({ type: 'numeric', precision: 20, scale: 2, nullable: true })
   aprProjected!: string | null;
 
+  @Column({ type: 'integer', default: 0 })
+  totalActiveClusters!: number;
+
+  @Column({ type: 'integer', default: 0 })
+  ethClusters!: number;
+
+  @Column({ type: 'integer', default: 0 })
+  ssvClusters!: number;
+
+  @Column({ type: 'numeric', precision: 78, scale: 0, default: 0 })
+  totalEffectiveBalance!: string;
+
+  @Column({ type: 'numeric', precision: 78, scale: 0, default: 0 })
+  totalEthEffectiveBalance!: string;
+
   @Column({ type: 'numeric', precision: 78, scale: 18, nullable: true })
   deltaIndex!: string | null;
 
