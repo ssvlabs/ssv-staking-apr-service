@@ -75,6 +75,7 @@ export function validateEnvironment(env: EnvVars): EnvVars {
   assertEnv(env, 'ORACLE_URL');
   assertEnv(env, 'APR_CALCULATION_CRON', { optional: true });
   assertBooleanEnv(env, 'CSSV_SNAPSHOT_ENABLED', { optional: true });
+  assertBooleanEnv(env, 'LST_SNAPSHOT_ENABLED', { optional: true });
   assertPositiveIntegerEnv(env, 'LOG_CHUNK_SIZE_BLOCKS', { optional: true });
 
   if (env.CSSV_SNAPSHOT_ENABLED === 'true') {
@@ -82,6 +83,11 @@ export function validateEnvironment(env: EnvVars): EnvVars {
     assertPositiveIntegerEnv(env, 'CHAIN_ID');
     assertEnv(env, 'CSSV_TOKEN_ADDRESS');
     assertPositiveIntegerEnv(env, 'CSSV_SNAPSHOT_START_BLOCK');
+  }
+
+  if (env.LST_SNAPSHOT_ENABLED === 'true') {
+    assertEnv(env, 'ARCHIVE_RPC_URL');
+    assertPositiveIntegerEnv(env, 'CHAIN_ID');
   }
 
   return env;
