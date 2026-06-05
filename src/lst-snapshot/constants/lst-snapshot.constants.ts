@@ -1,4 +1,4 @@
-export const LST_SNAPSHOT_CRON_EXPRESSION = '0 14 5 6 *';
+export const LST_SNAPSHOT_CRON_EXPRESSION = '0 14 * * *';
 export const LST_SNAPSHOT_CRON_TIME_ZONE = 'UTC';
 export const LST_SNAPSHOT_LOCK_NAMESPACE = 42_002;
 export const LST_SNAPSHOT_LOCK_KEY = 1;
