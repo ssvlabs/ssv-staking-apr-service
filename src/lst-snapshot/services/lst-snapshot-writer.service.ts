@@ -62,4 +62,29 @@ export class LstSnapshotWriterService {
       }
     });
   }
+
+  async getLatestSnapshotBlockForToken(tokenAddress: string): Promise<number | null> {
+    const result = await this.repository
+      .createQueryBuilder('s')
+      .select('MAX(CAST(s.snapshotBlock AS BIGINT))', 'maxBlock')
+      .where('s.tokenAddress = :tokenAddress', { tokenAddress: ethers.getAddress(tokenAddress) })
+      .getRawOne<{ maxBlock: string | null }>();
+
+    if (!result?.maxBlock) return null;
+    return Number(result.maxBlock);
+  }
+
+  async getWalletAddressesForToken(
+    snapshotBlock: number,
+    tokenAddress: string
+  ): Promise<string[]> {
+    const rows = await this.repository.find({
+      where: {
+        snapshotBlock: String(snapshotBlock),
+        tokenAddress: ethers.getAddress(tokenAddress)
+      },
+      select: ['walletAddress']
+    });
+    return rows.map((r) => r.walletAddress);
+  }
 }
