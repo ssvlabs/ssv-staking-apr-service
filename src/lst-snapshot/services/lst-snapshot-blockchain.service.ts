@@ -4,6 +4,7 @@ import { ethers } from 'ethers';
 import { ERC20_MINIMAL_ABI } from '../abis/erc20.abi';
 import { LstSnapshotConfigService } from '../config/lst-snapshot.config';
 import {
+  LST_SNAPSHOT_BALANCE_BATCH_DELAY_MS,
   LST_SNAPSHOT_BALANCE_BATCH_SIZE,
   LST_SNAPSHOT_RPC_MAX_RETRIES,
   LST_SNAPSHOT_RPC_RETRY_BASE_DELAY_MS
@@ -135,6 +136,10 @@ export class LstSnapshotBlockchainService implements OnModuleInit {
           )
         );
 
+        // Pace batches so the RPC node is not overwhelmed; both mainnet runs
+        // saw ~70% transient failures when firing batches back-to-back.
+        await this.sleep(LST_SNAPSHOT_BALANCE_BATCH_DELAY_MS);
+
         results.forEach((result, idx) => {
           const wallet = batch[idx];
 
@@ -232,7 +237,16 @@ export class LstSnapshotBlockchainService implements OnModuleInit {
       details.includes('econnreset') ||
       details.includes('etimedout') ||
       details.includes('429') ||
-      details.includes('-32005')
+      details.includes('-32005') ||
+      // An overloaded node answers eth_call with an empty/malformed response,
+      // which ethers v6 surfaces as CALL_EXCEPTION "missing revert data".
+      // A plain ERC-20 balanceOf cannot genuinely revert, so treat it as
+      // transient instead of aborting the whole snapshot run.
+      details.includes('missing revert data') ||
+      details.includes('call_exception') ||
+      details.includes('bad response') ||
+      details.includes('503') ||
+      details.includes('service unavailable')
     );
   }
 
