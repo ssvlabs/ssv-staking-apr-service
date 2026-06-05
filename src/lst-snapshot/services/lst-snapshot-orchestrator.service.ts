@@ -70,26 +70,13 @@ export class LstSnapshotOrchestratorService {
       return;
     }
 
-    const previousBlock = await this.writerService.getLatestSnapshotBlock();
-
-    if (previousBlock !== null && previousBlock >= snapshotBlock) {
-      this.logger.log(
-        `LST snapshot: latest saved block ${previousBlock} >= target ${snapshotBlock}; nothing to do (${trigger})`
-      );
-      return;
-    }
-
-    this.logger.log(
-      previousBlock !== null
-        ? `Starting incremental LST snapshot: block ${previousBlock} → ${snapshotBlock} (${trigger})`
-        : `Starting full LST snapshot at block ${snapshotBlock} (${trigger})`
-    );
+    this.logger.log(`Starting LST snapshot at block ${snapshotBlock} (${trigger})`);
 
     const snapshotAt = await this.blockchainService.getBlockTimestamp(snapshotBlock);
     let totalRows = 0;
 
     for (const token of LST_TOKENS) {
-      const rows = await this.snapshotToken(token, snapshotBlock, snapshotAt, previousBlock);
+      const rows = await this.snapshotToken(token, snapshotBlock, snapshotAt);
       totalRows += rows;
     }
 
@@ -101,8 +88,7 @@ export class LstSnapshotOrchestratorService {
   private async snapshotToken(
     token: LstTokenConfig,
     snapshotBlock: number,
-    snapshotAt: Date,
-    previousBlock: number | null
+    snapshotAt: Date
   ): Promise<number> {
     const normalizedAddress = ethers.getAddress(token.address);
 
@@ -119,12 +105,16 @@ export class LstSnapshotOrchestratorService {
       return existing;
     }
 
+    // Per-token previous block: if this specific token was never snapshotted, do a full scan.
+    const previousBlock =
+      await this.writerService.getLatestSnapshotBlockForToken(normalizedAddress);
+
     let candidates: Set<string>;
 
-    if (previousBlock !== null) {
-      // Incremental: delta transfers since last snapshot + all previous holders.
+    if (previousBlock !== null && previousBlock < snapshotBlock) {
+      // Incremental: delta transfers since last snapshot for this token + all previous holders.
       this.logger.log(
-        `${token.symbol}: collecting new Transfer recipients from block ${previousBlock} to ${snapshotBlock}`
+        `${token.symbol}: incremental scan block ${previousBlock} → ${snapshotBlock}`
       );
 
       const [deltaRecipients, previousHolders] = await Promise.all([
@@ -142,9 +132,9 @@ export class LstSnapshotOrchestratorService {
         `${token.symbol}: ${previousHolders.length} previous holders + ${deltaRecipients.size} new recipients = ${candidates.size} candidates`
       );
     } else {
-      // Full scan from deployment block.
+      // Full scan from deployment block (first run for this token, or previousBlock >= snapshotBlock).
       this.logger.log(
-        `${token.symbol}: collecting Transfer recipients from block ${token.deploymentBlock} to ${snapshotBlock}`
+        `${token.symbol}: full scan from block ${token.deploymentBlock} to ${snapshotBlock}`
       );
 
       candidates = await this.blockchainService.collectRecipients(
