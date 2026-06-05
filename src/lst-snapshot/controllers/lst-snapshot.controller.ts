@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Logger,
   Param,
   Post
 } from '@nestjs/common';
@@ -25,6 +26,8 @@ import { LstEligibilityResponseDto } from '../dto/lst-eligibility-response.dto';
 @ApiTags('lst-snapshot')
 @Controller('lst-snapshot')
 export class LstSnapshotController {
+  private readonly logger = new Logger(LstSnapshotController.name);
+
   constructor(
     private readonly readService: LstSnapshotReadService,
     private readonly orchestratorService: LstSnapshotOrchestratorService
@@ -61,7 +64,10 @@ export class LstSnapshotController {
   ): Promise<LstSnapshotTriggerResponseDto> {
     void this.orchestratorService
       .runLocked('manual', body.blockNumber)
-      .catch(() => undefined);
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Manual LST snapshot trigger failed: ${message}`);
+      });
 
     return { accepted: true };
   }

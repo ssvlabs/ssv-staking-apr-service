@@ -24,7 +24,12 @@ export class LstSnapshotOrchestratorService {
 
   @Cron(LST_SNAPSHOT_CRON_EXPRESSION, { timeZone: LST_SNAPSHOT_CRON_TIME_ZONE })
   async handleScheduledSnapshot(): Promise<void> {
-    await this.runLocked('cron');
+    try {
+      await this.runLocked('cron');
+    } catch {
+      // Error already logged inside runLocked; swallow here so the cron scheduler
+      // does not treat this as an unhandled rejection.
+    }
   }
 
   async runLocked(trigger: 'cron' | 'manual', blockNumber?: number): Promise<void> {
@@ -39,6 +44,14 @@ export class LstSnapshotOrchestratorService {
 
     try {
       await this.run(trigger, blockNumber);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+
+      this.logger.error(
+        `LST snapshot FAILED (trigger=${trigger}, block=${blockNumber ?? 'latest'}): ${message}`,
+        error instanceof Error ? error.stack : undefined
+      );
+      throw error;
     } finally {
       await this.lockService.release(runner);
     }
