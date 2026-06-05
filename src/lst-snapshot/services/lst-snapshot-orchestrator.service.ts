@@ -70,15 +70,26 @@ export class LstSnapshotOrchestratorService {
       return;
     }
 
+    const previousBlock = await this.writerService.getLatestSnapshotBlock();
+
+    if (previousBlock !== null && previousBlock >= snapshotBlock) {
+      this.logger.log(
+        `LST snapshot: latest saved block ${previousBlock} >= target ${snapshotBlock}; nothing to do (${trigger})`
+      );
+      return;
+    }
+
     this.logger.log(
-      `Starting LST holder snapshot at block ${snapshotBlock} (${trigger})`
+      previousBlock !== null
+        ? `Starting incremental LST snapshot: block ${previousBlock} → ${snapshotBlock} (${trigger})`
+        : `Starting full LST snapshot at block ${snapshotBlock} (${trigger})`
     );
 
     const snapshotAt = await this.blockchainService.getBlockTimestamp(snapshotBlock);
     let totalRows = 0;
 
     for (const token of LST_TOKENS) {
-      const rows = await this.snapshotToken(token, snapshotBlock, snapshotAt);
+      const rows = await this.snapshotToken(token, snapshotBlock, snapshotAt, previousBlock);
       totalRows += rows;
     }
 
@@ -90,7 +101,8 @@ export class LstSnapshotOrchestratorService {
   private async snapshotToken(
     token: LstTokenConfig,
     snapshotBlock: number,
-    snapshotAt: Date
+    snapshotAt: Date,
+    previousBlock: number | null
   ): Promise<number> {
     const normalizedAddress = ethers.getAddress(token.address);
 
@@ -107,23 +119,48 @@ export class LstSnapshotOrchestratorService {
       return existing;
     }
 
-    this.logger.log(
-      `${token.symbol}: collecting Transfer recipients from block ${token.deploymentBlock} to ${snapshotBlock}`
-    );
+    let candidates: Set<string>;
 
-    const recipients = await this.blockchainService.collectRecipients(
-      normalizedAddress,
-      token.deploymentBlock,
-      snapshotBlock
-    );
+    if (previousBlock !== null) {
+      // Incremental: delta transfers since last snapshot + all previous holders.
+      this.logger.log(
+        `${token.symbol}: collecting new Transfer recipients from block ${previousBlock} to ${snapshotBlock}`
+      );
+
+      const [deltaRecipients, previousHolders] = await Promise.all([
+        this.blockchainService.collectRecipients(
+          normalizedAddress,
+          previousBlock,
+          snapshotBlock
+        ),
+        this.writerService.getWalletAddressesForToken(previousBlock, normalizedAddress)
+      ]);
+
+      candidates = new Set([...previousHolders, ...deltaRecipients]);
+
+      this.logger.log(
+        `${token.symbol}: ${previousHolders.length} previous holders + ${deltaRecipients.size} new recipients = ${candidates.size} candidates`
+      );
+    } else {
+      // Full scan from deployment block.
+      this.logger.log(
+        `${token.symbol}: collecting Transfer recipients from block ${token.deploymentBlock} to ${snapshotBlock}`
+      );
+
+      candidates = await this.blockchainService.collectRecipients(
+        normalizedAddress,
+        token.deploymentBlock,
+        snapshotBlock
+      );
+    }
 
     this.logger.log(
-      `${token.symbol}: calling balanceOf for ${recipients.size} address(es) at block ${snapshotBlock}`
+      `${token.symbol}: calling balanceOf for ${candidates.size} address(es) at block ${snapshotBlock}`
     );
 
     const balances = await this.blockchainService.batchBalanceOf(
       normalizedAddress,
-      [...recipients],
+      [...candidates],
       snapshotBlock
     );
 
