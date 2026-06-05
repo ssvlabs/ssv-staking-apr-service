@@ -3,7 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import {
   AprSample,
   CssvSnapshotRun,
-  CssvSnapshotWallet
+  CssvSnapshotWallet,
+  LstHolderSnapshot
 } from '../entities';
 
 export const getDatabaseConfig = (
@@ -15,7 +16,7 @@ export const getDatabaseConfig = (
   username: configService.get<string>('DATABASE_USER'),
   password: configService.get<string>('DATABASE_PASSWORD'),
   database: configService.get<string>('DATABASE_NAME'),
-  entities: [AprSample, CssvSnapshotRun, CssvSnapshotWallet],
+  entities: [AprSample, CssvSnapshotRun, CssvSnapshotWallet, LstHolderSnapshot],
   migrations: [__dirname + '/../migrations/*.{ts,js}'],
   migrationsRun: true,
   synchronize: false,

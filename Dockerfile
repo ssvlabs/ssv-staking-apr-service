@@ -9,7 +9,7 @@ COPY pnpm-workspace.yaml ./
 
 # Install pnpm and dependencies
 RUN npm install -g pnpm
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
 # Copy source code
 COPY . .
@@ -31,7 +31,7 @@ COPY pnpm-workspace.yaml ./
 
 # Install pnpm and production dependencies only
 RUN npm install -g pnpm
-RUN pnpm install --frozen-lockfile --prod
+RUN pnpm install --frozen-lockfile --prod --ignore-scripts
 
 # Copy built application from builder
 COPY --from=builder /app/dist ./dist

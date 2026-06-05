@@ -13,8 +13,10 @@ import { getDatabaseConfig } from './config/database.config';
 import { validateEnvironment } from './config/env.validation';
 import { CssvSnapshotModule } from './cssv-snapshot/cssv-snapshot.module';
 import { CssvSnapshotDisabledController } from './cssv-snapshot/controllers/cssv-snapshot-disabled.controller';
+import { LstSnapshotModule } from './lst-snapshot/lst-snapshot.module';
 
 const cssvSnapshotEnabled = process.env.CSSV_SNAPSHOT_ENABLED === 'true';
+const lstSnapshotEnabled = process.env.LST_SNAPSHOT_ENABLED === 'true';
 
 @Module({
   imports: [
@@ -29,7 +31,8 @@ const cssvSnapshotEnabled = process.env.CSSV_SNAPSHOT_ENABLED === 'true';
     }),
     TypeOrmModule.forFeature([AprSample]),
     ScheduleModule.forRoot(),
-    ...(cssvSnapshotEnabled ? [CssvSnapshotModule] : [])
+    ...(cssvSnapshotEnabled ? [CssvSnapshotModule] : []),
+    ...(lstSnapshotEnabled ? [LstSnapshotModule] : [])
   ],
   controllers: [
     AprController,
