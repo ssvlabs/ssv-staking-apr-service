@@ -3,13 +3,15 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ethers } from 'ethers';
 import { LstHolderSnapshot } from '../../entities/lst-holder-snapshot.entity';
+import { LstSnapshotConfigService } from '../config/lst-snapshot.config';
 import { LstEligibilityResult } from '../types/lst-snapshot.types';
 
 @Injectable()
 export class LstSnapshotReadService {
   constructor(
     @InjectRepository(LstHolderSnapshot)
-    private readonly repository: Repository<LstHolderSnapshot>
+    private readonly repository: Repository<LstHolderSnapshot>,
+    private readonly config: LstSnapshotConfigService
   ) {}
 
   async getEligibility(rawAddress: string): Promise<LstEligibilityResult> {
@@ -21,28 +23,20 @@ export class LstSnapshotReadService {
       throw new BadRequestException(`Invalid wallet address: ${rawAddress}`);
     }
 
-    // Use the earliest snapshot block (the Jun 5 eligibility snapshot).
-    // If multiple blocks exist (e.g. daily snapshots after Jun 9), we want the
-    // first one because campaign eligibility is determined at that one block.
-    const earliestBlockRow = await this.repository
-      .createQueryBuilder('s')
-      .select('MIN(s.snapshot_block)', 'block')
-      .getRawOne<{ block: string | null }>();
-
-    const snapshotBlock = earliestBlockRow?.block ?? null;
+    const snapshotBlock = await this.resolveCampaignBlock();
 
     if (!snapshotBlock) {
       return { walletAddress, eligible: false, snapshotBlock: null, tokens: [] };
     }
 
     const rows = await this.repository.find({
-      where: { walletAddress, snapshotBlock }
+      where: { walletAddress, snapshotBlock: String(snapshotBlock) }
     });
 
     return {
       walletAddress,
       eligible: rows.length > 0,
-      snapshotBlock,
+      snapshotBlock: String(snapshotBlock),
       tokens: rows.map((row) => ({
         symbol: row.tokenSymbol,
         tokenAddress: row.tokenAddress,
@@ -51,10 +45,19 @@ export class LstSnapshotReadService {
     };
   }
 
-  async getLatestSnapshotBlock(): Promise<number | null> {
+  /**
+   * Returns the canonical campaign block to use for eligibility queries.
+   * Prefers LST_SNAPSHOT_CAMPAIGN_BLOCK (explicit pin) over the DB minimum,
+   * so test runs on earlier blocks never silently become the campaign snapshot.
+   */
+  async resolveCampaignBlock(): Promise<number | null> {
+    if (this.config.campaignBlock !== null) {
+      return this.config.campaignBlock;
+    }
+
     const row = await this.repository
       .createQueryBuilder('s')
-      .select('MAX(s.snapshot_block)', 'block')
+      .select('MIN(s.snapshot_block)', 'block')
       .getRawOne<{ block: string | null }>();
 
     return row?.block ? Number(row.block) : null;

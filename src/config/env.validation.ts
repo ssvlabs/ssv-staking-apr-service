@@ -88,6 +88,8 @@ export function validateEnvironment(env: EnvVars): EnvVars {
   if (env.LST_SNAPSHOT_ENABLED === 'true') {
     assertEnv(env, 'ARCHIVE_RPC_URL');
     assertPositiveIntegerEnv(env, 'CHAIN_ID');
+    assertPositiveIntegerEnv(env, 'LST_SNAPSHOT_CAMPAIGN_BLOCK', { optional: true });
+    assertEnv(env, 'LST_ADMIN_API_KEY', { optional: true });
   }
 
   return env;

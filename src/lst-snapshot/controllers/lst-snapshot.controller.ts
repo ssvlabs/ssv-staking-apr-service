@@ -6,10 +6,12 @@ import {
   HttpStatus,
   Logger,
   Param,
-  Post
+  Post,
+  UseGuards
 } from '@nestjs/common';
 import {
   ApiBody,
+  ApiHeader,
   ApiOkResponse,
   ApiOperation,
   ApiParam,
@@ -17,6 +19,7 @@ import {
 } from '@nestjs/swagger';
 import { LstSnapshotOrchestratorService } from '../services/lst-snapshot-orchestrator.service';
 import { LstSnapshotReadService } from '../services/lst-snapshot-read.service';
+import { AdminApiKeyGuard } from '../guards/admin-api-key.guard';
 import {
   LstSnapshotTriggerDto,
   LstSnapshotTriggerResponseDto
@@ -51,7 +54,13 @@ export class LstSnapshotController {
   }
 
   @Post('admin/trigger')
+  @UseGuards(AdminApiKeyGuard)
   @HttpCode(HttpStatus.OK)
+  @ApiHeader({
+    name: 'x-admin-key',
+    description: 'Admin API key (required when LST_ADMIN_API_KEY is set)',
+    required: false
+  })
   @ApiOperation({
     summary: 'Manually trigger an LST holder snapshot',
     description:
