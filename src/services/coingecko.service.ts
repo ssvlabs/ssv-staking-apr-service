@@ -1,10 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
 import axios, { AxiosInstance } from 'axios';
+import { Repository } from 'typeorm';
+import { AprSample } from '../entities/apr-sample.entity';
 
 export interface TokenPrices {
   ethPrice: number;
   ssvPrice: number;
+}
+
+export interface TimedTokenPrices extends TokenPrices {
+  /** Epoch ms at which these prices were fetched from CoinGecko. */
+  fetchedAt: number;
 }
 
 interface CoinGeckoSimplePriceResponse {
@@ -17,6 +25,8 @@ interface CoinGeckoSimplePriceResponse {
 }
 
 const DEFAULT_CACHE_TTL_MS = 15 * 60 * 1000;
+/** Prices older than this are never served; the API reports failure instead. */
+export const MAX_PRICE_STALENESS_MS = 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class CoinGeckoService {
@@ -24,20 +34,23 @@ export class CoinGeckoService {
   private readonly axiosInstance: AxiosInstance;
   private readonly baseUrl: string;
   private readonly cacheTtlMs: number;
-  private cachedPrices: {
-    value: TokenPrices;
-    expiresAt: number;
-    fetchedAt: number;
-  } | null = null;
+  private cachedPrices: TimedTokenPrices | null = null;
+  private cacheExpiresAt = 0;
+  private refreshInFlight: Promise<TimedTokenPrices> | null = null;
+  private seedAttempted = false;
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    @InjectRepository(AprSample)
+    private aprSampleRepository: Repository<AprSample>
+  ) {
     this.baseUrl =
       this.configService.get<string>('COINGECKO_API_URL') ||
       'https://api.coingecko.com/api/v3';
 
     this.cacheTtlMs = this.resolveCacheTtlMs();
 
-    const apiKey = this.configService.get<string>('COINGECKO_API_KEY');
+    const apiKey = this.configService.get<string>('COINGECKO_API_KEY')?.trim();
     // Pro keys only work against pro-api.coingecko.com; everything else uses the demo header.
     const apiKeyHeader = this.baseUrl.includes('pro-api.coingecko.com')
       ? 'x-cg-pro-api-key'
@@ -55,40 +68,33 @@ export class CoinGeckoService {
   }
 
   /**
-   * Get current prices for ETH and SSV with in-memory caching.
-   * Intended for API request paths that can tolerate slightly stale data
-   * in exchange for insulation against CoinGecko rate limits.
-   * When CoinGecko fails, the last good prices are served and the cache is
-   * re-armed, so a rate limit is not prolonged by retrying on every request.
+   * Get current prices for ETH and SSV for API request paths.
+   *
+   * Serves cached prices while fresh. Once the TTL passes, stale prices are
+   * served immediately while a single background refresh runs; a failed
+   * refresh re-arms the TTL, so CoinGecko outages and rate limits are not
+   * amplified by page traffic. On a cold start the cache is seeded from the
+   * latest stored APR sample. Prices older than MAX_PRICE_STALENESS_MS are
+   * never served.
    */
-  async getPrices(): Promise<TokenPrices> {
-    const now = Date.now();
-    if (this.cachedPrices && this.cachedPrices.expiresAt > now) {
-      return this.cachedPrices.value;
-    }
+  async getPrices(): Promise<TimedTokenPrices> {
+    await this.seedFromLatestSample();
 
-    try {
-      const prices = await this.getSpotPrices();
-      this.storePrices(prices);
-      return prices;
-    } catch (error) {
-      if (!this.cachedPrices) {
-        throw error;
+    const cached = this.cachedPrices;
+    if (cached && this.isServable(cached)) {
+      if (this.cacheExpiresAt <= Date.now()) {
+        void this.refresh().catch(() => undefined);
       }
-
-      const ageMs = now - this.cachedPrices.fetchedAt;
-      this.logger.warn(
-        `Serving stale CoinGecko prices (age ${Math.round(ageMs / 1000)}s) after fetch failure`
-      );
-      this.cachedPrices.expiresAt = now + this.cacheTtlMs;
-      return this.cachedPrices.value;
+      return cached;
     }
+
+    return this.refresh();
   }
 
   /**
    * Fetch prices directly from CoinGecko, bypassing and refreshing the cache.
    * Intended for the scheduled sample collection job, which must always record
-   * up-to-date values.
+   * up-to-date values. Throws on failure instead of falling back.
    */
   async getPricesFresh(): Promise<TokenPrices> {
     const prices = await this.getSpotPrices();
@@ -96,13 +102,93 @@ export class CoinGeckoService {
     return prices;
   }
 
-  private storePrices(prices: TokenPrices): void {
+  /**
+   * Fetch from CoinGecko, sharing one request between concurrent callers.
+   * Rejects when the fetch fails and no servable cached price exists.
+   */
+  private refresh(): Promise<TimedTokenPrices> {
+    if (!this.refreshInFlight) {
+      this.refreshInFlight = this.getSpotPrices()
+        .then((prices) => this.storePrices(prices))
+        .catch((error: unknown) => {
+          const cached = this.cachedPrices;
+          if (!cached || !this.isServable(cached)) {
+            throw error;
+          }
+
+          this.cacheExpiresAt = Date.now() + this.cacheTtlMs;
+          this.logger.warn(
+            `Serving stale CoinGecko prices (age ${Math.round((Date.now() - cached.fetchedAt) / 1000)}s) after fetch failure`
+          );
+          return cached;
+        })
+        .finally(() => {
+          this.refreshInFlight = null;
+        });
+    }
+
+    return this.refreshInFlight;
+  }
+
+  private isServable(prices: TimedTokenPrices): boolean {
+    return Date.now() - prices.fetchedAt < MAX_PRICE_STALENESS_MS;
+  }
+
+  private storePrices(prices: TokenPrices): TimedTokenPrices {
     const now = Date.now();
     this.cachedPrices = {
-      value: prices,
-      expiresAt: now + this.cacheTtlMs,
+      ethPrice: prices.ethPrice,
+      ssvPrice: prices.ssvPrice,
       fetchedAt: now
     };
+    this.cacheExpiresAt = now + this.cacheTtlMs;
+    return this.cachedPrices;
+  }
+
+  /**
+   * Seed an empty cache with the prices of the latest stored APR sample, so a
+   * restart during a CoinGecko outage still serves prices. The seeded entry is
+   * marked expired, so the first request also triggers a background refresh.
+   */
+  private async seedFromLatestSample(): Promise<void> {
+    if (this.seedAttempted || this.cachedPrices) {
+      return;
+    }
+    this.seedAttempted = true;
+
+    try {
+      const [latest] = await this.aprSampleRepository.find({
+        order: { timestamp: 'DESC' },
+        take: 1
+      });
+      if (!latest || this.cachedPrices) {
+        return;
+      }
+
+      const ethPrice = Number(latest.ethPrice);
+      const ssvPrice = Number(latest.ssvPrice);
+      if (
+        !Number.isFinite(ethPrice) ||
+        !Number.isFinite(ssvPrice) ||
+        ethPrice <= 0 ||
+        ssvPrice <= 0
+      ) {
+        return;
+      }
+
+      this.cachedPrices = {
+        ethPrice,
+        ssvPrice,
+        fetchedAt: latest.timestamp.getTime()
+      };
+      this.cacheExpiresAt = 0;
+      this.logger.log(
+        `Seeded CoinGecko price cache from APR sample at ${latest.timestamp.toISOString()}`
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Could not seed CoinGecko price cache: ${message}`);
+    }
   }
 
   private resolveCacheTtlMs(): number {
