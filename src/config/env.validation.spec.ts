@@ -79,4 +79,15 @@ describe('validateEnvironment', () => {
       })
     ).toThrow('LST_SNAPSHOT_READ_ENABLED must be either "true" or "false"');
   });
+
+  it('applies full-mode requirements when both LST flags are enabled', () => {
+    expect(() =>
+      validateEnvironment({
+        ...baseEnv,
+        LST_SNAPSHOT_ENABLED: 'true',
+        LST_SNAPSHOT_READ_ENABLED: 'true',
+        LST_SNAPSHOT_CAMPAIGN_BLOCK: '25251631'
+      })
+    ).toThrow('ARCHIVE_RPC_URL must be set');
+  });
 });

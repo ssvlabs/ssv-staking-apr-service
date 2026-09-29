@@ -22,7 +22,8 @@ export class LstSnapshotReadConfigService {
       return;
     }
 
-    if (!/^\d+$/.test(campaignBlockRaw)) {
+    // Block 0 would make the read service treat the snapshot as missing.
+    if (!/^[1-9]\d*$/.test(campaignBlockRaw)) {
       throw new Error('LST_SNAPSHOT_CAMPAIGN_BLOCK must be a positive integer');
     }
 
