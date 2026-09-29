@@ -24,7 +24,11 @@ export class CoinGeckoService {
   private readonly axiosInstance: AxiosInstance;
   private readonly baseUrl: string;
   private readonly cacheTtlMs: number;
-  private cachedPrices: { value: TokenPrices; expiresAt: number } | null = null;
+  private cachedPrices: {
+    value: TokenPrices;
+    expiresAt: number;
+    fetchedAt: number;
+  } | null = null;
 
   constructor(private configService: ConfigService) {
     this.baseUrl =
@@ -33,13 +37,20 @@ export class CoinGeckoService {
 
     this.cacheTtlMs = this.resolveCacheTtlMs();
 
+    const apiKey = this.configService.get<string>('COINGECKO_API_KEY');
+    // Pro keys only work against pro-api.coingecko.com; everything else uses the demo header.
+    const apiKeyHeader = this.baseUrl.includes('pro-api.coingecko.com')
+      ? 'x-cg-pro-api-key'
+      : 'x-cg-demo-api-key';
+
     this.logger.log(
-      `CoinGeckoService initialized with baseUrl: ${this.baseUrl}, cacheTtlMs: ${this.cacheTtlMs}`
+      `CoinGeckoService initialized with baseUrl: ${this.baseUrl}, cacheTtlMs: ${this.cacheTtlMs}, apiKey: ${apiKey ? apiKeyHeader : 'none'}`
     );
 
     this.axiosInstance = axios.create({
       baseURL: this.baseUrl,
-      timeout: 30000
+      timeout: 30000,
+      headers: apiKey ? { [apiKeyHeader]: apiKey } : {}
     });
   }
 
@@ -47,6 +58,8 @@ export class CoinGeckoService {
    * Get current prices for ETH and SSV with in-memory caching.
    * Intended for API request paths that can tolerate slightly stale data
    * in exchange for insulation against CoinGecko rate limits.
+   * When CoinGecko fails, the last good prices are served and the cache is
+   * re-armed, so a rate limit is not prolonged by retrying on every request.
    */
   async getPrices(): Promise<TokenPrices> {
     const now = Date.now();
@@ -54,9 +67,22 @@ export class CoinGeckoService {
       return this.cachedPrices.value;
     }
 
-    const prices = await this.getSpotPrices();
-    this.cachedPrices = { value: prices, expiresAt: now + this.cacheTtlMs };
-    return prices;
+    try {
+      const prices = await this.getSpotPrices();
+      this.storePrices(prices);
+      return prices;
+    } catch (error) {
+      if (!this.cachedPrices) {
+        throw error;
+      }
+
+      const ageMs = now - this.cachedPrices.fetchedAt;
+      this.logger.warn(
+        `Serving stale CoinGecko prices (age ${Math.round(ageMs / 1000)}s) after fetch failure`
+      );
+      this.cachedPrices.expiresAt = now + this.cacheTtlMs;
+      return this.cachedPrices.value;
+    }
   }
 
   /**
@@ -66,12 +92,23 @@ export class CoinGeckoService {
    */
   async getPricesFresh(): Promise<TokenPrices> {
     const prices = await this.getSpotPrices();
-    this.cachedPrices = { value: prices, expiresAt: Date.now() + this.cacheTtlMs };
+    this.storePrices(prices);
     return prices;
   }
 
+  private storePrices(prices: TokenPrices): void {
+    const now = Date.now();
+    this.cachedPrices = {
+      value: prices,
+      expiresAt: now + this.cacheTtlMs,
+      fetchedAt: now
+    };
+  }
+
   private resolveCacheTtlMs(): number {
-    const raw = this.configService.get<string | number>('COINGECKO_CACHE_TTL_MS');
+    const raw = this.configService.get<string | number>(
+      'COINGECKO_CACHE_TTL_MS'
+    );
     if (raw === undefined || raw === null || raw === '') {
       return DEFAULT_CACHE_TTL_MS;
     }
@@ -130,7 +167,9 @@ export class CoinGeckoService {
         this.logger.error(
           `Response data: ${JSON.stringify(error.response?.data)}`
         );
-        this.logger.debug(`Request config: ${JSON.stringify(error.config)}`);
+        this.logger.debug(
+          `Request: ${error.config?.method?.toUpperCase()} ${error.config?.baseURL ?? ''}${error.config?.url ?? ''} params=${JSON.stringify(error.config?.params)}`
+        );
       }
 
       if (stack) {
