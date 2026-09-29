@@ -14,9 +14,14 @@ import { validateEnvironment } from './config/env.validation';
 import { CssvSnapshotModule } from './cssv-snapshot/cssv-snapshot.module';
 import { CssvSnapshotDisabledController } from './cssv-snapshot/controllers/cssv-snapshot-disabled.controller';
 import { LstSnapshotModule } from './lst-snapshot/lst-snapshot.module';
+import { LstSnapshotReadModule } from './lst-snapshot/lst-snapshot-read.module';
 
 const cssvSnapshotEnabled = process.env.CSSV_SNAPSHOT_ENABLED === 'true';
 const lstSnapshotEnabled = process.env.LST_SNAPSHOT_ENABLED === 'true';
+// Read mode serves the stored snapshot without the capture machinery.
+// The full module already includes the read route, so it wins when both are set.
+const lstSnapshotReadEnabled =
+  !lstSnapshotEnabled && process.env.LST_SNAPSHOT_READ_ENABLED === 'true';
 
 @Module({
   imports: [
@@ -32,7 +37,8 @@ const lstSnapshotEnabled = process.env.LST_SNAPSHOT_ENABLED === 'true';
     TypeOrmModule.forFeature([AprSample]),
     ScheduleModule.forRoot(),
     ...(cssvSnapshotEnabled ? [CssvSnapshotModule] : []),
-    ...(lstSnapshotEnabled ? [LstSnapshotModule] : [])
+    ...(lstSnapshotEnabled ? [LstSnapshotModule] : []),
+    ...(lstSnapshotReadEnabled ? [LstSnapshotReadModule] : [])
   ],
   controllers: [
     AprController,

@@ -51,4 +51,32 @@ describe('validateEnvironment', () => {
       })
     ).not.toThrow();
   });
+
+  it('does not require ARCHIVE_RPC_URL or CHAIN_ID in LST read mode', () => {
+    expect(() =>
+      validateEnvironment({
+        ...baseEnv,
+        LST_SNAPSHOT_READ_ENABLED: 'true',
+        LST_SNAPSHOT_CAMPAIGN_BLOCK: '25251631'
+      })
+    ).not.toThrow();
+  });
+
+  it('requires a pinned campaign block in LST read mode', () => {
+    expect(() =>
+      validateEnvironment({
+        ...baseEnv,
+        LST_SNAPSHOT_READ_ENABLED: 'true'
+      })
+    ).toThrow('LST_SNAPSHOT_CAMPAIGN_BLOCK must be set');
+  });
+
+  it('rejects a non-boolean LST_SNAPSHOT_READ_ENABLED', () => {
+    expect(() =>
+      validateEnvironment({
+        ...baseEnv,
+        LST_SNAPSHOT_READ_ENABLED: 'yes'
+      })
+    ).toThrow('LST_SNAPSHOT_READ_ENABLED must be either "true" or "false"');
+  });
 });
