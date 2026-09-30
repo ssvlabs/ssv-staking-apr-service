@@ -6,12 +6,15 @@ import { LstSnapshotController } from './controllers/lst-snapshot.controller';
 import { LstSnapshotAdvisoryLockService } from './services/lst-snapshot-advisory-lock.service';
 import { LstSnapshotBlockchainService } from './services/lst-snapshot-blockchain.service';
 import { LstSnapshotOrchestratorService } from './services/lst-snapshot-orchestrator.service';
-import { LstSnapshotReadService } from './services/lst-snapshot-read.service';
 import { LstSnapshotWriterService } from './services/lst-snapshot-writer.service';
 import { AdminApiKeyGuard } from './guards/admin-api-key.guard';
+import { LstSnapshotReadModule } from './lst-snapshot-read.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([LstHolderSnapshot])],
+  imports: [
+    TypeOrmModule.forFeature([LstHolderSnapshot]),
+    LstSnapshotReadModule
+  ],
   controllers: [LstSnapshotController],
   providers: [
     LstSnapshotConfigService,
@@ -19,7 +22,6 @@ import { AdminApiKeyGuard } from './guards/admin-api-key.guard';
     LstSnapshotAdvisoryLockService,
     LstSnapshotBlockchainService,
     LstSnapshotOrchestratorService,
-    LstSnapshotReadService,
     LstSnapshotWriterService
   ]
 })
