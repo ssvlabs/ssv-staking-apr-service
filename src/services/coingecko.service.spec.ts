@@ -1,6 +1,9 @@
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance, CreateAxiosDefaults } from 'axios';
+import { mkdtempSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { Repository } from 'typeorm';
 import { AprSample } from '../entities/apr-sample.entity';
 import { CoinGeckoService, MAX_PRICE_STALENESS_MS } from './coingecko.service';
@@ -73,6 +76,38 @@ describe('CoinGeckoService', () => {
         COINGECKO_API_URL: 'https://pro-api.coingecko.com/api/v3'
       });
       expect(headers).toEqual({ 'x-cg-pro-api-key': API_KEY });
+    });
+
+    it('reads the key from COINGECKO_API_KEY_FILE', () => {
+      const keyFile = join(mkdtempSync(join(tmpdir(), 'cg-')), 'key');
+      writeFileSync(keyFile, `${API_KEY}\n`);
+      const { headers } = createService({ COINGECKO_API_KEY_FILE: keyFile });
+      expect(headers).toEqual({ 'x-cg-demo-api-key': API_KEY });
+    });
+
+    it('prefers COINGECKO_API_KEY over COINGECKO_API_KEY_FILE', () => {
+      const keyFile = join(mkdtempSync(join(tmpdir(), 'cg-')), 'key');
+      writeFileSync(keyFile, 'file-key');
+      const { headers } = createService({
+        COINGECKO_API_KEY: API_KEY,
+        COINGECKO_API_KEY_FILE: keyFile
+      });
+      expect(headers).toEqual({ 'x-cg-demo-api-key': API_KEY });
+    });
+
+    it('falls back to keyless when the key file is missing or empty', () => {
+      jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      const dir = mkdtempSync(join(tmpdir(), 'cg-'));
+      const emptyFile = join(dir, 'empty');
+      writeFileSync(emptyFile, '\n');
+
+      expect(
+        createService({ COINGECKO_API_KEY_FILE: join(dir, 'missing') }).headers
+      ).toEqual({});
+      jest.restoreAllMocks();
+      expect(
+        createService({ COINGECKO_API_KEY_FILE: emptyFile }).headers
+      ).toEqual({});
     });
 
     it('never logs the key when a request fails', async () => {
