@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import axios, { AxiosInstance } from 'axios';
+import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import { Repository } from 'typeorm';
 import { AprSample } from '../entities/apr-sample.entity';
 
@@ -31,13 +31,18 @@ export const MAX_PRICE_STALENESS_MS = 24 * 60 * 60 * 1000;
 @Injectable()
 export class CoinGeckoService {
   private readonly logger = new Logger(CoinGeckoService.name);
-  private readonly axiosInstance: AxiosInstance;
+  private axiosInstance: AxiosInstance;
+  /** Keyless client used when CoinGecko rejects the configured key; null without a key. */
+  private keylessAxiosInstance: AxiosInstance | null = null;
   private readonly baseUrl: string;
   private readonly cacheTtlMs: number;
   private cachedPrices: TimedTokenPrices | null = null;
   private cacheExpiresAt = 0;
   private refreshInFlight: Promise<TimedTokenPrices> | null = null;
-  private seedAttempted = false;
+  /** Error of the last failed refresh while no servable price existed; rethrown until the TTL passes. */
+  private lastRefreshError: Error | null = null;
+  private seedDone = false;
+  private seedInFlight: Promise<void> | null = null;
 
   constructor(
     private configService: ConfigService,
@@ -65,6 +70,12 @@ export class CoinGeckoService {
       timeout: 30000,
       headers: apiKey ? { [apiKeyHeader]: apiKey } : {}
     });
+    if (apiKey) {
+      this.keylessAxiosInstance = axios.create({
+        baseURL: this.baseUrl,
+        timeout: 30000
+      });
+    }
   }
 
   /**
@@ -75,10 +86,11 @@ export class CoinGeckoService {
    * refresh re-arms the TTL, so CoinGecko outages and rate limits are not
    * amplified by page traffic. On a cold start the cache is seeded from the
    * latest stored APR sample. Prices older than MAX_PRICE_STALENESS_MS are
-   * never served.
+   * never served; without a servable price, a failure is rethrown until the
+   * TTL passes instead of calling CoinGecko on every request.
    */
   async getPrices(): Promise<TimedTokenPrices> {
-    await this.seedFromLatestSample();
+    await this.ensureSeeded();
 
     const cached = this.cachedPrices;
     if (cached && this.isServable(cached)) {
@@ -86,6 +98,10 @@ export class CoinGeckoService {
         void this.refresh().catch(() => undefined);
       }
       return cached;
+    }
+
+    if (this.lastRefreshError !== null && this.cacheExpiresAt > Date.now()) {
+      throw this.lastRefreshError;
     }
 
     return this.refresh();
@@ -111,12 +127,14 @@ export class CoinGeckoService {
       this.refreshInFlight = this.getSpotPrices()
         .then((prices) => this.storePrices(prices))
         .catch((error: unknown) => {
+          this.cacheExpiresAt = Date.now() + this.cacheTtlMs;
           const cached = this.cachedPrices;
           if (!cached || !this.isServable(cached)) {
+            this.lastRefreshError =
+              error instanceof Error ? error : new Error(String(error));
             throw error;
           }
 
-          this.cacheExpiresAt = Date.now() + this.cacheTtlMs;
           this.logger.warn(
             `Serving stale CoinGecko prices (age ${Math.round((Date.now() - cached.fetchedAt) / 1000)}s) after fetch failure`
           );
@@ -142,7 +160,35 @@ export class CoinGeckoService {
       fetchedAt: now
     };
     this.cacheExpiresAt = now + this.cacheTtlMs;
+    this.lastRefreshError = null;
     return this.cachedPrices;
+  }
+
+  /**
+   * Seed once, sharing the lookup between concurrent cold callers. A failed
+   * lookup (e.g. the DB is not ready yet) is retried on the next request.
+   */
+  private async ensureSeeded(): Promise<void> {
+    if (this.seedDone || this.cachedPrices) {
+      return;
+    }
+
+    if (!this.seedInFlight) {
+      this.seedInFlight = this.seedFromLatestSample()
+        .then(() => {
+          this.seedDone = true;
+        })
+        .catch((error: unknown) => {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          this.logger.warn(`Could not seed CoinGecko price cache: ${message}`);
+        })
+        .finally(() => {
+          this.seedInFlight = null;
+        });
+    }
+
+    await this.seedInFlight;
   }
 
   /**
@@ -151,44 +197,34 @@ export class CoinGeckoService {
    * marked expired, so the first request also triggers a background refresh.
    */
   private async seedFromLatestSample(): Promise<void> {
-    if (this.seedAttempted || this.cachedPrices) {
+    const [latest] = await this.aprSampleRepository.find({
+      order: { timestamp: 'DESC' },
+      take: 1
+    });
+    if (!latest || this.cachedPrices) {
       return;
     }
-    this.seedAttempted = true;
 
-    try {
-      const [latest] = await this.aprSampleRepository.find({
-        order: { timestamp: 'DESC' },
-        take: 1
-      });
-      if (!latest || this.cachedPrices) {
-        return;
-      }
-
-      const ethPrice = Number(latest.ethPrice);
-      const ssvPrice = Number(latest.ssvPrice);
-      if (
-        !Number.isFinite(ethPrice) ||
-        !Number.isFinite(ssvPrice) ||
-        ethPrice <= 0 ||
-        ssvPrice <= 0
-      ) {
-        return;
-      }
-
-      this.cachedPrices = {
-        ethPrice,
-        ssvPrice,
-        fetchedAt: latest.timestamp.getTime()
-      };
-      this.cacheExpiresAt = 0;
-      this.logger.log(
-        `Seeded CoinGecko price cache from APR sample at ${latest.timestamp.toISOString()}`
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.warn(`Could not seed CoinGecko price cache: ${message}`);
+    const ethPrice = Number(latest.ethPrice);
+    const ssvPrice = Number(latest.ssvPrice);
+    if (
+      !Number.isFinite(ethPrice) ||
+      !Number.isFinite(ssvPrice) ||
+      ethPrice <= 0 ||
+      ssvPrice <= 0
+    ) {
+      return;
     }
+
+    this.cachedPrices = {
+      ethPrice,
+      ssvPrice,
+      fetchedAt: latest.timestamp.getTime()
+    };
+    this.cacheExpiresAt = 0;
+    this.logger.log(
+      `Seeded CoinGecko price cache from APR sample at ${latest.timestamp.toISOString()}`
+    );
   }
 
   private resolveCacheTtlMs(): number {
@@ -211,6 +247,43 @@ export class CoinGeckoService {
   }
 
   /**
+   * Request /simple/price. If CoinGecko rejects the configured key (400/401)
+   * and the keyless API answers, switch to keyless for the rest of the process.
+   */
+  private async requestSimplePrice(
+    params: Record<string, string>
+  ): Promise<AxiosResponse<CoinGeckoSimplePriceResponse>> {
+    try {
+      return await this.axiosInstance.get<CoinGeckoSimplePriceResponse>(
+        '/simple/price',
+        { params }
+      );
+    } catch (error) {
+      const keyless = this.keylessAxiosInstance;
+      const status = axios.isAxiosError(error)
+        ? error.response?.status
+        : undefined;
+      if (!keyless || (status !== 400 && status !== 401)) {
+        throw error;
+      }
+
+      this.logger.error(
+        `CoinGecko rejected COINGECKO_API_KEY (status ${status}); retrying without a key`
+      );
+      const response = await keyless.get<CoinGeckoSimplePriceResponse>(
+        '/simple/price',
+        { params }
+      );
+      this.logger.error(
+        'Using the keyless CoinGecko API until restart; fix or remove COINGECKO_API_KEY'
+      );
+      this.axiosInstance = keyless;
+      this.keylessAxiosInstance = null;
+      return response;
+    }
+  }
+
+  /**
    * Get current spot prices for ETH and SSV
    */
   private async getSpotPrices(): Promise<TokenPrices> {
@@ -219,11 +292,7 @@ export class CoinGeckoService {
     const startTime = Date.now();
 
     try {
-      const response =
-        await this.axiosInstance.get<CoinGeckoSimplePriceResponse>(
-          '/simple/price',
-          { params }
-        );
+      const response = await this.requestSimplePrice(params);
 
       const ethPrice = response.data.ethereum?.usd;
       const ssvPrice = response.data['ssv-network']?.usd;

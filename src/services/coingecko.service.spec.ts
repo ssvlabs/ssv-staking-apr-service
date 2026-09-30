@@ -11,9 +11,9 @@ function priceResponse(eth: number, ssv: number) {
   return { data: { ethereum: { usd: eth }, 'ssv-network': { usd: ssv } } };
 }
 
-function forbidden(headers: Record<string, string> = {}) {
+function forbidden(headers: Record<string, string> = {}, status = 403) {
   const error = new axios.AxiosError(
-    'Request failed with status code 403',
+    `Request failed with status code ${status}`,
     'ERR_BAD_REQUEST'
   );
   error.config = {
@@ -22,7 +22,7 @@ function forbidden(headers: Record<string, string> = {}) {
     url: '/simple/price',
     headers
   } as never;
-  error.response = { status: 403, statusText: 'Forbidden', data: '' } as never;
+  error.response = { status, statusText: 'Forbidden', data: '' } as never;
   return error;
 }
 
@@ -35,15 +35,17 @@ function createService(
   samples: Partial<AprSample>[] = []
 ) {
   const get = jest.fn();
+  const keylessGet = jest.fn();
   const createSpy = jest
     .spyOn(axios, 'create')
-    .mockReturnValue({ get } as unknown as AxiosInstance);
+    .mockReturnValueOnce({ get } as unknown as AxiosInstance)
+    .mockReturnValueOnce({ get: keylessGet } as unknown as AxiosInstance);
   const find = jest.fn().mockResolvedValue(samples);
   const config = { get: (key: string) => env[key] } as ConfigService;
   const repository = { find } as unknown as Repository<AprSample>;
   const service = new CoinGeckoService(config, repository);
   const createConfig = createSpy.mock.calls[0][0] as CreateAxiosDefaults;
-  return { service, get, find, headers: createConfig.headers };
+  return { service, get, keylessGet, find, headers: createConfig.headers };
 }
 
 describe('CoinGeckoService', () => {
@@ -92,6 +94,52 @@ describe('CoinGeckoService', () => {
       expect(logged.length).toBeGreaterThan(0);
       expect(JSON.stringify(logged)).not.toContain(API_KEY);
     });
+
+    it('switches to the keyless API when CoinGecko rejects the key', async () => {
+      const { service, get, keylessGet } = createService({
+        COINGECKO_API_KEY: API_KEY,
+        COINGECKO_CACHE_TTL_MS: '1000'
+      });
+      get.mockRejectedValue(forbidden({}, 401));
+      keylessGet.mockResolvedValue(priceResponse(3000, 5));
+
+      await expect(service.getPrices()).resolves.toMatchObject({
+        ethPrice: 3000
+      });
+
+      jest.advanceTimersByTime(2000);
+      await service.getPricesFresh();
+
+      expect(get).toHaveBeenCalledTimes(1);
+      expect(keylessGet).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps the key when the keyless API also fails', async () => {
+      const { service, get, keylessGet } = createService({
+        COINGECKO_API_KEY: API_KEY
+      });
+      get.mockRejectedValueOnce(forbidden({}, 401));
+      keylessGet.mockRejectedValue(forbidden());
+
+      await expect(service.getPricesFresh()).rejects.toThrow('403');
+
+      get.mockResolvedValueOnce(priceResponse(3000, 5));
+      await expect(service.getPricesFresh()).resolves.toMatchObject({
+        ethPrice: 3000
+      });
+      expect(get).toHaveBeenCalledTimes(2);
+      expect(keylessGet).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not drop the key on a 403 (IP block)', async () => {
+      const { service, get, keylessGet } = createService({
+        COINGECKO_API_KEY: API_KEY
+      });
+      get.mockRejectedValue(forbidden());
+
+      await expect(service.getPricesFresh()).rejects.toThrow('403');
+      expect(keylessGet).not.toHaveBeenCalled();
+    });
   });
 
   describe('getPrices', () => {
@@ -100,6 +148,68 @@ describe('CoinGeckoService', () => {
       get.mockRejectedValue(forbidden());
 
       await expect(service.getPrices()).rejects.toThrow('403');
+    });
+
+    it('does not call CoinGecko again until the TTL passes after a cold failure', async () => {
+      const { service, get } = createService({
+        COINGECKO_CACHE_TTL_MS: '1000'
+      });
+      get.mockRejectedValue(forbidden());
+
+      await expect(service.getPrices()).rejects.toThrow('403');
+      await expect(service.getPrices()).rejects.toThrow('403');
+      expect(get).toHaveBeenCalledTimes(1);
+
+      jest.advanceTimersByTime(2000);
+      get.mockResolvedValueOnce(priceResponse(3000, 5));
+      await expect(service.getPrices()).resolves.toMatchObject({
+        ethPrice: 3000
+      });
+      expect(get).toHaveBeenCalledTimes(2);
+    });
+
+    it('lets concurrent cold callers share the seed lookup', async () => {
+      const sampledAt = new Date(Date.now() - 60 * 60 * 1000);
+      const { service, get, find } = createService();
+      let resolveFind: (rows: Partial<AprSample>[]) => void = () => undefined;
+      find.mockReturnValue(
+        new Promise((resolve) => {
+          resolveFind = resolve;
+        })
+      );
+      get.mockRejectedValue(forbidden());
+
+      const first = service.getPrices();
+      const second = service.getPrices();
+      await flushPromises();
+      resolveFind([{ timestamp: sampledAt, ethPrice: '2500', ssvPrice: '4' }]);
+
+      const seeded = {
+        ethPrice: 2500,
+        ssvPrice: 4,
+        fetchedAt: sampledAt.getTime()
+      };
+      await expect(first).resolves.toEqual(seeded);
+      await expect(second).resolves.toEqual(seeded);
+      expect(find).toHaveBeenCalledTimes(1);
+    });
+
+    it('retries the seed lookup after a DB error', async () => {
+      jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      const sampledAt = new Date(Date.now() - 60 * 60 * 1000);
+      const { service, get, find } = createService();
+      find
+        .mockRejectedValueOnce(new Error('db not ready'))
+        .mockResolvedValue([
+          { timestamp: sampledAt, ethPrice: '2500', ssvPrice: '4' }
+        ]);
+      get.mockRejectedValue(forbidden());
+
+      await expect(service.getPrices()).rejects.toThrow('403');
+      await expect(service.getPrices()).resolves.toMatchObject({
+        ethPrice: 2500
+      });
+      expect(find).toHaveBeenCalledTimes(2);
     });
 
     it('shares one CoinGecko request between concurrent cold callers', async () => {
