@@ -22,10 +22,6 @@ export class LstSnapshotConfigService {
   readonly logChunkSizeBlocks: number;
   readonly cronExpression: string;
   readonly cronTimeZone: string;
-  /** Pinned block for the Jun 5 campaign eligibility snapshot. When set,
-   *  the eligibility API queries this exact block and the orchestrator
-   *  treats it as the canonical snapshot regardless of test runs. */
-  readonly campaignBlock: number | null;
   /** Optional API key required on admin endpoints. When unset all admin
    *  routes are open — intended only for local dev. */
   readonly adminApiKey: string | null;
@@ -42,10 +38,6 @@ export class LstSnapshotConfigService {
     );
     this.cronExpression = LST_SNAPSHOT_CRON_EXPRESSION;
     this.cronTimeZone = LST_SNAPSHOT_CRON_TIME_ZONE;
-    const campaignBlockRaw = this.configService.get<string>('LST_SNAPSHOT_CAMPAIGN_BLOCK');
-    this.campaignBlock = campaignBlockRaw
-      ? parseRequiredPositiveInteger('LST_SNAPSHOT_CAMPAIGN_BLOCK', campaignBlockRaw)
-      : null;
     this.adminApiKey = this.configService.get<string>('LST_ADMIN_API_KEY') ?? null;
   }
 

@@ -77,6 +77,7 @@ export function validateEnvironment(env: EnvVars): EnvVars {
   assertEnv(env, 'APR_CALCULATION_CRON', { optional: true });
   assertBooleanEnv(env, 'CSSV_SNAPSHOT_ENABLED', { optional: true });
   assertBooleanEnv(env, 'LST_SNAPSHOT_ENABLED', { optional: true });
+  assertBooleanEnv(env, 'LST_SNAPSHOT_READ_ENABLED', { optional: true });
   assertPositiveIntegerEnv(env, 'LOG_CHUNK_SIZE_BLOCKS', { optional: true });
 
   if (env.CSSV_SNAPSHOT_ENABLED === 'true') {
@@ -91,6 +92,9 @@ export function validateEnvironment(env: EnvVars): EnvVars {
     assertPositiveIntegerEnv(env, 'CHAIN_ID');
     assertPositiveIntegerEnv(env, 'LST_SNAPSHOT_CAMPAIGN_BLOCK', { optional: true });
     assertEnv(env, 'LST_ADMIN_API_KEY', { optional: true });
+  } else if (env.LST_SNAPSHOT_READ_ENABLED === 'true') {
+    // Read mode serves the stored snapshot only: no RPC, and the block must be pinned.
+    assertPositiveIntegerEnv(env, 'LST_SNAPSHOT_CAMPAIGN_BLOCK');
   }
 
   return env;

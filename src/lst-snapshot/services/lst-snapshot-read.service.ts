@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ethers } from 'ethers';
 import { LstHolderSnapshot } from '../../entities/lst-holder-snapshot.entity';
-import { LstSnapshotConfigService } from '../config/lst-snapshot.config';
+import { LstSnapshotReadConfigService } from '../config/lst-snapshot-read.config';
 import { LstEligibilityResult } from '../types/lst-snapshot.types';
 
 @Injectable()
@@ -11,7 +11,7 @@ export class LstSnapshotReadService {
   constructor(
     @InjectRepository(LstHolderSnapshot)
     private readonly repository: Repository<LstHolderSnapshot>,
-    private readonly config: LstSnapshotConfigService
+    private readonly config: LstSnapshotReadConfigService
   ) {}
 
   async getEligibility(rawAddress: string): Promise<LstEligibilityResult> {
