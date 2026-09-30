@@ -2,7 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import axios, { AxiosInstance } from 'axios';
-import { readFileSync } from 'fs';
 import { Repository } from 'typeorm';
 import { AprSample } from '../entities/apr-sample.entity';
 
@@ -51,7 +50,7 @@ export class CoinGeckoService {
 
     this.cacheTtlMs = this.resolveCacheTtlMs();
 
-    const apiKey = this.resolveApiKey();
+    const apiKey = this.configService.get<string>('COINGECKO_API_KEY')?.trim();
     // Pro keys only work against pro-api.coingecko.com; everything else uses the demo header.
     const apiKeyHeader = this.baseUrl.includes('pro-api.coingecko.com')
       ? 'x-cg-pro-api-key'
@@ -66,31 +65,6 @@ export class CoinGeckoService {
       timeout: 30000,
       headers: apiKey ? { [apiKeyHeader]: apiKey } : {}
     });
-  }
-
-  /**
-   * COINGECKO_API_KEY wins; otherwise the key is read from COINGECKO_API_KEY_FILE
-   * (an optionally mounted secret). A missing or empty key means keyless calls.
-   */
-  private resolveApiKey(): string | undefined {
-    const fromEnv = this.configService.get<string>('COINGECKO_API_KEY')?.trim();
-    if (fromEnv) {
-      return fromEnv;
-    }
-
-    const keyFile = this.configService.get<string>('COINGECKO_API_KEY_FILE');
-    if (!keyFile) {
-      return undefined;
-    }
-
-    try {
-      return readFileSync(keyFile, 'utf8').trim() || undefined;
-    } catch {
-      this.logger.warn(
-        `COINGECKO_API_KEY_FILE ${keyFile} is not readable; calling CoinGecko without a key`
-      );
-      return undefined;
-    }
   }
 
   /**
