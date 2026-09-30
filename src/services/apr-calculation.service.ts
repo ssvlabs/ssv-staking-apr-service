@@ -13,7 +13,8 @@ import { OracleService } from './oracle.service';
 const BLOCKS_PER_YEAR = 2_613_400;
 const EFFECTIVE_BALANCE_PER_VALIDATOR = 32;
 const DEFAULT_APR_CALCULATION_CRON = '0 */3 * * *';
-const APR_CALCULATION_CRON = process.env.APR_CALCULATION_CRON || DEFAULT_APR_CALCULATION_CRON;
+const APR_CALCULATION_CRON =
+  process.env.APR_CALCULATION_CRON || DEFAULT_APR_CALCULATION_CRON;
 const EMPTY_CLUSTER_STATS: ExplorerCenterClusterStats = {
   totalActiveClusters: 0,
   ETHClusters: 0,
@@ -26,6 +27,8 @@ export interface CurrentAprResponse extends ExplorerCenterClusterStats {
   apr: number | null;
   aprProjected: number | null;
   lastUpdated: number;
+  /** Epoch ms of the ETH/SSV prices used; older than lastUpdated when CoinGecko is failing. */
+  pricesUpdatedAt: number;
 }
 
 interface ComputedAprResponse extends ExplorerCenterClusterStats {
@@ -185,10 +188,10 @@ export class AprCalculationService {
   }
 
   /**
-    * Scheduled job to collect APR samples.
-    * Uses APR_CALCULATION_CRON env var, defaulting to every 3 hours.
+   * Scheduled job to collect APR samples.
+   * Uses APR_CALCULATION_CRON env var, defaulting to every 3 hours.
    */
-    @Cron(APR_CALCULATION_CRON)
+  @Cron(APR_CALCULATION_CRON)
   async collectAprSample(): Promise<AprSample> {
     try {
       const [networkFeeWei, prices] = await Promise.all([
@@ -283,6 +286,7 @@ export class AprCalculationService {
         apr,
         aprProjected,
         lastUpdated,
+        pricesUpdatedAt: prices.fetchedAt,
         totalActiveClusters,
         ETHClusters,
         SSVclusters,

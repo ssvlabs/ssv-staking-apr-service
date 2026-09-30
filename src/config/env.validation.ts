@@ -71,6 +71,7 @@ export function validateEnvironment(env: EnvVars): EnvVars {
   assertEnv(env, 'STAKING_CONTRACT_ADDRESS');
   assertEnv(env, 'COINGECKO_API_URL', { optional: true });
   assertEnv(env, 'COINGECKO_CACHE_TTL_MS', { optional: true });
+  assertEnv(env, 'COINGECKO_API_KEY', { optional: true });
   assertEnv(env, 'EXPLORER_CENTER_URL');
   assertEnv(env, 'ORACLE_URL');
   assertEnv(env, 'APR_CALCULATION_CRON', { optional: true });
